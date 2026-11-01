@@ -121,7 +121,15 @@ def get_steuer(year: int = Query(0)):
             "amount": round(float(row["amount"]), 4),
         })
 
+    from kapital.finance import crypto as _crypto
+    try:
+        crypto_sales = _crypto.sales_by_year(df, year)
+    except Exception:
+        crypto_sales = None
+    has_crypto = bool((df["account"] == "Kraken").any())
+
     return {
+        "crypto": crypto_sales if has_crypto else None,
         "years": available_years,
         "selected_year": year,
         "capital_income": round(total_cap, 4),

@@ -221,9 +221,16 @@ const PageUpload = () => {
         catch { data = { ok: false, detail: txt.slice(0, 300) || `HTTP ${res.status}` }; }
         if (res.ok && data.ok) {
           newResults.push({ file: file.name, ...data, error: null });
+          // Depotauszug und übersprungene PDFs bringen keine Buchungen — für
+          // sie ist "alle bereits vorhanden" schlicht falsch. Sie liefern ihre
+          // eigene Meldung.
+          const isTxImport = data.type !== "depot_snapshot" && data.type !== "tr_pdf_skipped";
           const msg = data.n_new > 0
             ? `+${data.n_new} Buchungen · ${data.format_name}`
-            : `Alle Buchungen bereits vorhanden · ${data.format_name}`;
+              + (data.n_learned ? ` · ${data.n_learned} automatisch zugeordnet` : "")
+            : isTxImport
+              ? `Alle Buchungen bereits vorhanden · ${data.format_name}`
+              : data.message;
           toast(msg, data.n_new > 0 ? "pos" : "neutral");
           (data.affected_months || []).forEach((m) => touchedMonths.add(m));
           openAfterImport = Math.max(openAfterImport, data.n_open_affected || 0);
@@ -239,6 +246,7 @@ const PageUpload = () => {
     }
     setResults(r => [...newResults, ...r]);
     setUploading(false);
+    window.dispatchEvent(new Event("kapital:open-changed"));
 
     // Zwangs-Zuordnung: sobald ein Import einen Monat berührt hat, in dem noch
     // Buchungen offen sind, öffnet sich das Gate.
@@ -379,6 +387,10 @@ const PageUpload = () => {
                 {r.error ? (
                   <div style={{ fontSize: 11, color: "var(--neg)", marginTop: 4, lineHeight: 1.5, fontFamily: "var(--mono)", wordBreak: "break-word" }}>
                     {r.error}
+                  </div>
+                ) : (r.type === "depot_snapshot" || r.type === "tr_pdf_skipped") ? (
+                  <div style={{ fontSize: 12, color: "var(--muted)", marginTop: 5, lineHeight: 1.5 }}>
+                    {r.message}
                   </div>
                 ) : (
                   <div style={{ display: "flex", gap: 14, marginTop: 5, flexWrap: "wrap" }}>

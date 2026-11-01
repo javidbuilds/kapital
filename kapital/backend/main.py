@@ -10,7 +10,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from .routers import (
     dashboard, transactions, categories, portfolio,
     forecast, upload, jahresuebersicht, abos, fire, steuer, regeln,
-    kronos_forecast, settings, review, monatsabschluss,
+    kronos_forecast, settings, review, monatsabschluss, ziele, contracts,
 )
 
 app = FastAPI(title="Kapital", version="1.0")
@@ -27,7 +27,7 @@ for router in [
     portfolio.router, forecast.router, upload.router,
     jahresuebersicht.router, abos.router, fire.router,
     steuer.router, regeln.router, kronos_forecast.router, settings.router,
-    review.router, monatsabschluss.router,
+    review.router, monatsabschluss.router, ziele.router, contracts.router,
 ]:
     app.include_router(router, prefix="/api")
 

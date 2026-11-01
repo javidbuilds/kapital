@@ -1,6 +1,6 @@
 import logging
 import math
-from fastapi import APIRouter
+from fastapi import APIRouter, Query
 from ..deps import get_df
 
 log = logging.getLogger(__name__)
@@ -56,6 +56,7 @@ def get_portfolio():
             active_df = pf.merge_with_snapshot(
                 active_df, snapshot,
                 closed_after_snapshot=pf.isins_closed_after(tr_df, snap_date_early),
+                snapshot_date=snap_date_early,
             )
         except (KeyError, ValueError, TypeError) as exc:
             log.exception("merge_with_snapshot ist gescheitert")
@@ -151,9 +152,12 @@ def get_portfolio():
 
     total_pl = total_value - total_cost
 
-    # ── TR uninvested cash (cash flows not tied to a trade) ────────────────────
+    # ── TR-Cash = Summe ALLER Buchungen des Verrechnungskontos ────────────────
+    # Käufe ziehen Cash ab, Verkäufe bringen es zurück. Vorher wurden nur die
+    # Nicht-Handelsbuchungen summiert — jeder Kauf blieb als Cash stehen
+    # (der Saldo war damit um alle Käufe zu hoch).
     non_trade = tr_df[tr_df["units"].fillna(0) == 0]
-    tr_cash = round(float(non_trade["amount"].sum()), 2)
+    tr_cash = round(float(tr_df["amount"].sum()), 2)
 
     # ── TR income breakdown (exclude deposits and transfers) ──────────────────
     _deposit_prefixes = ("CUSTOMER_INBOUND", "TRANSFER_INBOUND", "TRANSFER_OUTBOUND")
@@ -273,4 +277,76 @@ def get_portfolio():
         },
         "dividends": dividends,
         "trades":    trades,
+    }
+
+
+@router.get("/portfolio/performance")
+def get_performance(benchmark: str = Query("msci_world")):
+    """Wertentwicklung je Monat, Vergleichs-ETF, Kaufkraft-Linie und Hinweise."""
+    import pandas as pd
+    from kapital.finance import performance as perf
+    from kapital.finance import storage
+
+    df = get_df()
+    tr_df = df[df["account"] == "Trade Republic"].copy() if not df.empty else df
+    if tr_df.empty:
+        return {"months": [], "insights": [], "warnings": ["Keine Trade-Republic-Buchungen."]}
+
+    try:
+        result = perf.performance(
+            tr_df,
+            storage.load_depot_snapshot(),
+            storage.load_depot_snapshot_date(),
+            benchmark=benchmark,
+        )
+    except Exception as exc:   # Netzwerk/Yahoo: Seite darf trotzdem laden
+        log.exception("Wertentwicklung nicht berechenbar")
+        return {"months": [], "insights": [], "warnings": [
+            f"Wertentwicklung nicht berechenbar ({type(exc).__name__}: {exc})."]}
+
+    base = get_portfolio()
+    # Effektiver Zins: letzte Zinsgutschrift (gilt für den VORMONAT) geteilt
+    # durch den Ø Tagessaldo dieses Vormonats. Vorher: durch den heutigen
+    # Saldo — nach großen Einzahlungen ergab das 1,2 % statt real ~1,8 %.
+    interest = tr_df[tr_df["description"].str.upper().str.startswith("INTEREST", na=False)]
+    interest_rate = None
+    if not interest.empty:
+        last = interest.sort_values("date").iloc[-1]
+        period = (last["date"] - pd.offsets.MonthBegin(1)).to_period("M")
+        days = pd.date_range(period.start_time, period.end_time.normalize(), freq="D")
+        bal = tr_df.sort_values("date").groupby("date")["amount"].sum().cumsum()
+        daily = bal.reindex(bal.index.union(days)).ffill().reindex(days)
+        avg = float(daily.mean()) if daily.notna().any() else 0.0
+        if avg > 0:
+            interest_rate = float(last["amount"]) * 12 / avg * 100
+    result["insights"] = perf.insights(
+        result, base.get("positions", []), float(base.get("summary", {}).get("tr_cash", 0) or 0),
+        interest_rate,
+    )
+    return result
+
+
+@router.get("/portfolio/crypto")
+def get_crypto():
+    """Krypto-Bestand (Kraken) mit Einstand, Wert und Steuerfreiheit."""
+    from kapital.finance import crypto
+    df = get_df()
+    pos = crypto.positions(df)
+    kr = df[df["account"] == "Kraken"] if not df.empty else df
+    deposits = float(kr.loc[kr["description"].str.startswith("TRANSFER_INBOUND", na=False), "amount"].sum()) if len(kr) else 0.0
+    withdrawals = float(-kr.loc[kr["description"].str.startswith("TRANSFER_OUTBOUND", na=False), "amount"].sum()) if len(kr) else 0.0
+    fees = float(-kr.loc[kr["description"].str.startswith("FEE", na=False), "amount"].sum()) if len(kr) else 0.0
+    value = sum((p["value"] if p["value"] is not None else p["cost"]) for p in pos)
+    cost = sum(p["cost"] for p in pos)
+    return {
+        "positions": pos,
+        "summary": {
+            "value": round(value, 2),
+            "cost": round(cost, 2),
+            "pl": round(value - cost, 2),
+            "deposited": round(deposits - withdrawals, 2),
+            "vs_deposited": round(value - (deposits - withdrawals), 2),
+            "fees_deposit": round(fees, 2),
+            "cash": round(float(kr["amount"].sum()), 2) if len(kr) else 0.0,
+        },
     }

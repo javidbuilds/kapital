@@ -157,7 +157,7 @@ def make_row(
 
 
 _FLOAT_COLS = {"amount", "units", "price_per_unit"}
-_BOOL_COLS  = {"is_transfer", "is_sonderausgabe"}
+_BOOL_COLS  = {"is_transfer", "is_sonderausgabe", "reviewed"}
 
 def finalize_df(df: pd.DataFrame) -> pd.DataFrame:
     """Enforce schema, types and sort order. Used by all parsers."""
@@ -168,6 +168,8 @@ def finalize_df(df: pd.DataFrame) -> pd.DataFrame:
         if col not in df.columns:
             if col in _BOOL_COLS:
                 df[col] = False
+            elif col == "booking_date":
+                df[col] = pd.NaT
             elif col in _FLOAT_COLS:
                 df[col] = 0.0
             else:

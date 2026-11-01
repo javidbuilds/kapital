@@ -4,6 +4,8 @@ from pydantic import BaseModel
 from typing import List
 import io
 
+import pandas as pd
+
 from ..deps import (get_df, reload_df, set_df, categories_list, cat_meta, transaction,
                     row_occurrences, make_row_ref, resolve_row_ref, resolve_row_refs)
 from kapital.finance import storage
@@ -35,6 +37,11 @@ def list_transactions(
     category: str = Query("all"),
     account: str = Query("all"),
     sonderausgabe: str = Query("all", description="all | true | false"),
+    kind: str = Query("all", description="all | ausgaben | einnahmen | erstattungen | umbuchungen | investitionen"),
+    date_from: str = Query(""),
+    date_to: str = Query(""),
+    amount_min: float | None = Query(None, description="Betrag ab (Betrag ohne Vorzeichen)"),
+    amount_max: float | None = Query(None, description="Betrag bis (Betrag ohne Vorzeichen)"),
     limit: int = Query(100, le=500),
     offset: int = Query(0),
     sort: str = Query("date_desc"),
@@ -46,6 +53,11 @@ def list_transactions(
     mask = [True] * len(df)
     import pandas as pd
     mask = pd.Series([True] * len(df), index=df.index)
+    # Kraken-Staking: wöchentliche Mini-Zugänge ohne Geldfluss. Sie stecken im
+    # Krypto-Bestand (Portfolio), in der Buchungsliste wären es nur 50+ Zeilen
+    # mit 0,00 €.
+    mask &= ~((df["account"] == "Kraken") & (df["amount"] == 0)
+              & df["description"].str.startswith("STAKING", na=False))
 
     if search:
         sl = search.lower()
@@ -55,10 +67,46 @@ def list_transactions(
         )
     if category != "all":
         mask &= df["category"] == category
-    if account != "all":
-        # Anzeigename -> alle rohen account_label desselben Kontos, siehe deps.
+    if account not in ("all", ""):
+        # Mehrfachauswahl wie auf der Übersicht ("Giro,Kraken"); Anzeigename ->
+        # alle rohen account_label desselben Kontos, siehe deps.
         from ..deps import account_raw_labels
-        mask &= df["account_label"].isin(account_raw_labels(df, account))
+        raw: list = []
+        for a in str(account).split(","):
+            if a.strip():
+                raw.extend(account_raw_labels(df, a.strip()))
+        mask &= df["account_label"].isin(raw)
+    # Zeitraum
+    for val, op in ((date_from, "ge"), (date_to, "le")):
+        if val:
+            ts = pd.to_datetime(val, errors="coerce")
+            if pd.isna(ts):
+                raise HTTPException(400, f"Ungültiges Datum: {val!r}")
+            mask &= (df["date"] >= ts) if op == "ge" else (df["date"] <= ts)
+    # Betrag (ohne Vorzeichen — "ab 100 €" meint Aus- wie Eingänge)
+    if amount_min is not None:
+        mask &= df["amount"].abs() >= amount_min
+    if amount_max is not None:
+        mask &= df["amount"].abs() <= amount_max
+    # Art der Buchung — dieselben Definitionen wie in den Auswertungen
+    # (analytics._expenses/_income/_refunds), damit eine gefilterte Summe hier
+    # zur Zahl auf der Übersicht passt.
+    if kind != "all":
+        from kapital.finance import analytics as A
+        from kapital.finance.models import SAVINGS_CATEGORIES
+        if kind == "ausgaben":
+            sel = A._expenses(df).index
+        elif kind == "einnahmen":
+            sel = A._income(df).index
+        elif kind == "erstattungen":
+            sel = A._refunds(df).index
+        elif kind == "umbuchungen":
+            sel = df.index[df["is_transfer"].fillna(False).astype(bool) | (df["category"] == "Umbuchung")]
+        elif kind == "investitionen":
+            sel = A._investments(df).index
+        else:
+            raise HTTPException(400, f"Unbekannte Art: {kind!r}")
+        mask &= df.index.isin(sel)
     if sonderausgabe in ("true", "false") and "is_sonderausgabe" in df.columns:
         flag = df["is_sonderausgabe"].astype(bool)
         mask &= flag if sonderausgabe == "true" else ~flag
@@ -85,6 +133,11 @@ def list_transactions(
 
     total = len(filtered)
     page_df = filtered.iloc[offset: offset + limit]
+    sums = {
+        "count": int(total),
+        "sum_in": round(float(filtered.loc[filtered["amount"] > 0, "amount"].sum()), 2),
+        "sum_out": round(float(filtered.loc[filtered["amount"] < 0, "amount"].sum()), 2),
+    }
 
     cats = {c["id"]: c for c in categories_list()}
     forced = abo_overrides.forced_keys()
@@ -92,6 +145,9 @@ def list_transactions(
     # laufende Nummer zählt über den ungefilterten Bestand, damit dieselbe Zeile
     # unter jedem Filter dieselbe Referenz trägt.
     occurrence = row_occurrences(df)
+    # Anzeigename statt roher IBAN ("DE00 1234 …" → "Giro"), wie überall sonst.
+    from kapital.finance.networth import account_display_groups
+    display_of = {raw: name for name, raws in account_display_groups(df).items() for raw in raws}
     items = []
     for _, row in page_df.iterrows():
         cat_id = str(row.get("category", "Sonstiges"))
@@ -105,11 +161,14 @@ def list_transactions(
             "id": make_row_ref(str(row["tx_hash"]), occurrence.loc[row.name]),
             "tx_hash": str(row["tx_hash"]),
             "date": row["date"].strftime("%Y-%m-%d"),
+            # Gesetzt, wenn die Buchung für den Vormonat zählt (month_shift.py)
+            "booking_date": (row["booking_date"].strftime("%Y-%m-%d")
+                             if "booking_date" in row.index and pd.notna(row["booking_date"]) else None),
             "payee": payee,
             "description": desc,
             "category": cat_id,
             "amount": round(float(row["amount"]), 2),
-            "account": str(row.get("account_label", "")),
+            "account": display_of.get(row.get("account_label", ""), str(row.get("account_label", ""))),
             "is_transfer": bool(row.get("is_transfer", False)),
             "is_sonderausgabe": bool(row.get("is_sonderausgabe", False)),
             "is_abo": bool(is_abo),
@@ -124,6 +183,7 @@ def list_transactions(
     return {
         "items": items,
         "total": total,
+        "sums": sums,
         "categories": cat_options,
         "accounts": acc_options,
     }
@@ -138,6 +198,7 @@ def update_category(tx_hash: str, body: CategoryUpdate):
         raise HTTPException(404, "Transaction not found")
     df = df.copy()
     df.loc[idx, "category"] = body.category
+    df.loc[idx, "reviewed"] = True
     storage.save(df)
     set_df(df)
     return {"ok": True, "tx_hash": tx_hash, "category": body.category}
@@ -347,6 +408,7 @@ def bulk_update(body: BulkFlagBody):
             # Regeln, sonst verschieben sich die Ausschlüsse in allen Auswertungen.
             keep = ~df.loc[idx, "is_transfer"].fillna(False).astype(bool)
             df.loc[idx[keep], "category"] = body.category
+            df.loc[idx[keep], "reviewed"] = True
         if body.is_sonderausgabe is not None:
             df.loc[idx, "is_sonderausgabe"] = bool(body.is_sonderausgabe)
 

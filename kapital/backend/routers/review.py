@@ -150,6 +150,7 @@ def _assign_locked(body: AssignBody):
             skipped.append(item.tx_hash)
             continue
         df.loc[idx, "category"] = item.category
+        df.loc[idx, "reviewed"] = True
         updated += len(idx)
 
         if item.rule and item.rule.pattern.strip():
@@ -164,6 +165,11 @@ def _assign_locked(body: AssignBody):
         # gesamten Bestand angewandt — eine Regel auf "PayPal" hätte damit alle
         # 739 PayPal-Zeilen überschrieben, auch die 270 bereits richtigen.
         df = apply_custom_rules(df, load_rules(), only_uncategorized=True)
+
+    # Was der User gerade zugeordnet hat, gilt auch für dieselben Händler in
+    # anderen (nicht angezeigten) Monaten, die noch offen sind.
+    df, propagated = review_core.apply_learned(df)
+    updated += propagated
 
     storage.save(df)
     set_df(df)

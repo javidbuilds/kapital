@@ -62,7 +62,7 @@ const CategoryDetail = ({ cat, preset, account, range, onClose }) => {
                   <div title={`${m.month}: ${fmtEUR(m.amount)}`} style={{
                     width: "100%", minHeight: 2,
                     height: `${Math.max(2, (m.amount / maxMonthly) * 76)}px`,
-                    background: cat.color || "var(--accent)", opacity: 0.8,
+                    background: cat.color || "var(--accent)", opacity: 0.95,
                     borderRadius: "2px 2px 0 0", cursor: "default",
                   }} />
                 </div>
@@ -89,7 +89,7 @@ const CategoryDetail = ({ cat, preset, account, range, onClose }) => {
                     <span style={{ fontFamily: "var(--mono)", fontSize: 12, fontWeight: 500, flexShrink: 0 }}>{fmtEUR(p.total)}</span>
                   </div>
                   <div style={{ height: 2, background: "var(--bg-2)", borderRadius: 1 }}>
-                    <div style={{ width: `${(p.total / maxPayee) * 100}%`, height: "100%", background: cat.color || "var(--accent)", opacity: 0.7 }} />
+                    <div style={{ width: `${(p.total / maxPayee) * 100}%`, height: "100%", background: cat.color || "var(--accent)", opacity: 0.9 }} />
                   </div>
                 </div>
               ))}
@@ -133,7 +133,7 @@ const CatRow = ({ c, isSelected, compared, onToggleDetail, onToggleCompare,
         <div style={{ flex: 1, minWidth: 0 }}>
           <div style={{ fontWeight: 500, fontSize: 13 }}>{c.name}</div>
           <div style={{ marginTop: 5, height: 3, background: "var(--bg-2)", borderRadius: 2, overflow: "hidden" }}>
-            <div style={{ width: `${(c.spend / maxSpend) * 100}%`, height: "100%", background: c.color || "var(--accent)", opacity: 0.75 }} />
+            <div style={{ width: `${(c.spend / maxSpend) * 100}%`, height: "100%", background: c.color || "var(--accent)", opacity: 0.95 }} />
           </div>
         </div>
         <div style={{ textAlign: "right", minWidth: 90 }}>

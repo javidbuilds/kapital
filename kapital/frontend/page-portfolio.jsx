@@ -2,7 +2,7 @@
 
 const PagePortfolio = () => {
   const { data, loading } = useFetch("/api/portfolio");
-  const [tab, setTab] = React.useState("positionen");
+  const [tab, setTab] = React.useState("entwicklung");
 
   if (loading) return <Spinner />;
   if (!data || (!data.positions?.length && !data.sold?.length)) return (
@@ -14,10 +14,12 @@ const PagePortfolio = () => {
   const fmtXirr = (v) => v == null ? "—" : `${v > 0 ? "+" : ""}${v.toFixed(1)} %`;
 
   const tabs = [
+    ["entwicklung", "Entwicklung"],
     ["positionen", "Positionen"],
     ["analyse", "Analyse"],
     ["trades", "Trades"],
     ["dividenden", "Dividenden"],
+    ["krypto", "Krypto"],
     ["ki_prognose", "KI-Prognose"],
   ];
   if (sold.length > 0) tabs.splice(2, 0, ["realisiert", "Realisiert"]);
@@ -63,6 +65,11 @@ const PagePortfolio = () => {
         value={tab}
         onChange={setTab}
       />
+
+      <WarningStrip warnings={data.warnings} />
+
+      {tab === "entwicklung" && <EntwicklungTab />}
+      {tab === "krypto" && <KryptoTab />}
 
       {/* Positionen */}
       {tab === "positionen" && (
@@ -158,7 +165,7 @@ const PagePortfolio = () => {
                       </div>
                     </div>
                     <div style={{ height: 6, background: "var(--bg-2)", borderRadius: 3 }}>
-                      <div style={{ width: `${row.pct || 0}%`, height: "100%", background: row.color, opacity: 0.8, borderRadius: 3 }} />
+                      <div style={{ width: `${row.pct || 0}%`, height: "100%", background: row.color, opacity: 0.95, borderRadius: 3 }} />
                     </div>
                   </div>
                 ))}
@@ -679,3 +686,299 @@ const KronosChart = ({ historical, forecast, currency = "EUR" }) => {
 };
 
 window.PagePortfolio = PagePortfolio;
+
+// ── Entwicklung: Depot vs. Index vs. Inflation ──────────────────────────────
+// Ein Vergleich über IDENTISCHE Cashflows: jede Ein- und Auszahlung des Depots
+// wird am selben Tag auch im Vergleichs-ETF gebucht und mit dem HVPI
+// fortgeschrieben. Damit bewertet die Kurve die Auswahl der Papiere — nicht,
+// wann und wie viel gespart wurde.
+const PERF_SERIES = [
+  { key: "total_return_value", label: "Dein Depot", color: "var(--accent)", width: 2.4 },
+  { key: "benchmark", label: null, color: "#ffb547", width: 2 },
+  { key: "inflation_line", label: "Kaufkraft erhalten", color: "#3fd17a", width: 1.6, dash: "6 4" },
+  { key: "invested", label: "Netto eingezahlt", color: "var(--muted)", width: 1.2, dash: "2 4" },
+];
+
+const PerformanceChart = ({ rows, benchLabel, height = 300 }) => {
+  const [ref, size] = useElementSize();
+  const [hover, setHover] = React.useState(null);
+  const width = Math.max(size.w, 320);
+  const padL = 64, padR = 16, padT = 14, padB = 28;
+  const w = width - padL - padR, h = height - padT - padB;
+  const series = PERF_SERIES.map(s => ({ ...s, label: s.label || benchLabel }));
+  const vals = rows.flatMap(r => series.map(s => r[s.key]).filter(v => v != null));
+  const { axMin, axMax, ticks } = niceAxis(Math.min(0, ...vals), Math.max(...vals, 1));
+  const x = (i) => padL + (i / Math.max(rows.length - 1, 1)) * w;
+  const y = (v) => padT + h - ((v - axMin) / (axMax - axMin || 1)) * h;
+  const path = (k) => {
+    let d = "", pen = false;
+    rows.forEach((r, i) => {
+      const v = r[k];
+      if (v == null) { pen = false; return; }
+      d += `${pen ? "L" : "M"}${x(i).toFixed(1)},${y(v).toFixed(1)} `;
+      pen = true;
+    });
+    return d;
+  };
+  const onMove = (e) => {
+    const rect = e.currentTarget.getBoundingClientRect();
+    const px = e.clientX - rect.left;
+    const i = Math.round(((px - padL) / w) * (rows.length - 1));
+    if (i >= 0 && i < rows.length) setHover({ i, px });
+  };
+  const hr = hover ? rows[hover.i] : null;
+  // Nur Januare beschriften; der erste Punkt nur, wenn kein Januar direkt folgt
+  // (Start im Dezember hätte sonst "2020" und "2021" übereinander gesetzt).
+  const yearTicks = rows.map((r, i) => [r, i]).filter(([r, i]) =>
+    r.month.endsWith("-01") || (i === 0 && !rows.slice(1, 4).some(x => x.month.endsWith("-01"))));
+
+  return (
+    <div ref={ref} style={{ position: "relative", width: "100%" }}>
+      <svg width={width} height={height} style={{ display: "block" }}
+           onMouseMove={onMove} onMouseLeave={() => setHover(null)}>
+        {ticks.map((t, i) => (
+          <g key={i}>
+            <line x1={padL} x2={width - padR} y1={y(t)} y2={y(t)} stroke="var(--line)" strokeDasharray={t === 0 ? "" : "2 4"} />
+            <text x={padL - 8} y={y(t) + 4} textAnchor="end" fontSize="10" fill="var(--muted)" fontFamily="var(--mono)">{compactNum(t)}</text>
+          </g>
+        ))}
+        {yearTicks.map(([r, i]) => (
+          <text key={r.month} x={x(i)} y={height - 8} textAnchor="middle" fontSize="10" fill="var(--muted)" fontFamily="var(--mono)">
+            {r.month.slice(0, 4)}
+          </text>
+        ))}
+        {series.slice().reverse().map(s => (
+          <path key={s.key} d={path(s.key)} fill="none" stroke={s.color} strokeWidth={s.width}
+                strokeDasharray={s.dash || ""} strokeLinejoin="round" />
+        ))}
+        {hr && <line x1={x(hover.i)} x2={x(hover.i)} y1={padT} y2={padT + h} stroke="var(--line-strong)" />}
+        {hr && series.map(s => hr[s.key] != null && (
+          <circle key={s.key} cx={x(hover.i)} cy={y(hr[s.key])} r="3.5" fill={s.color} stroke="var(--bg-1)" strokeWidth="1.5" />
+        ))}
+      </svg>
+      {hr && (
+        <div style={{
+          position: "absolute", top: 8, left: Math.min(hover.px + 14, width - 230),
+          background: "var(--bg-1)", border: "1px solid var(--line)", borderRadius: 8,
+          padding: "8px 12px", fontSize: 12, pointerEvents: "none", boxShadow: "0 4px 12px var(--shadow)",
+          minWidth: 200,
+        }}>
+          <div style={{ fontWeight: 600, marginBottom: 6, fontFamily: "var(--mono)" }}>{hr.month}</div>
+          {series.map(s => hr[s.key] != null && (
+            <div key={s.key} style={{ display: "flex", justifyContent: "space-between", gap: 14 }}>
+              <span style={{ color: "var(--muted)" }}>
+                <span style={{ display: "inline-block", width: 8, height: 8, borderRadius: 2, background: s.color, marginRight: 6 }} />
+                {s.label}
+              </span>
+              <span style={{ fontFamily: "var(--mono)" }}>{fmtEUR(hr[s.key], { decimals: 0 })}</span>
+            </div>
+          ))}
+        </div>
+      )}
+      <div style={{ display: "flex", gap: 16, flexWrap: "wrap", marginTop: 8, paddingLeft: padL, fontSize: 11, color: "var(--muted)" }}>
+        {series.map(s => (
+          <span key={s.key} style={{ display: "flex", alignItems: "center", gap: 6 }}>
+            <svg width="18" height="4"><line x1="0" x2="18" y1="2" y2="2" stroke={s.color} strokeWidth="2" strokeDasharray={s.dash || ""} /></svg>
+            {s.label}
+          </span>
+        ))}
+      </div>
+    </div>
+  );
+};
+
+const EntwicklungTab = () => {
+  const [bench, setBench] = React.useState("msci_world");
+  const { data, loading, error } = useFetch(`/api/portfolio/performance?benchmark=${bench}`);
+
+  if (loading && !data) return (
+    <Card>
+      <Spinner />
+      <div style={{ textAlign: "center", fontSize: 12, color: "var(--muted)", marginTop: -8 }}>
+        Lade Kurshistorie und Inflationsdaten … (beim ersten Mal bis zu 30 Sekunden)
+      </div>
+    </Card>
+  );
+  if (error || !data) return <EmptyState title="Wertentwicklung nicht verfügbar" desc={error || ""} />;
+  if (!data.months?.length) return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+      <WarningStrip warnings={data.warnings} />
+      <EmptyState title="Keine Wertentwicklung" />
+    </div>
+  );
+
+  const k = data.kpis || {};
+  const bl = data.benchmark?.label || "Index";
+  const sgn = (v) => v == null ? "—" : `${v > 0 ? "+" : ""}${v.toFixed(1).replace(".", ",")} %`;
+  const tone = (v) => v == null ? "neutral" : v >= 0 ? "pos" : "neg";
+  const toneColor = { pos: "var(--pos)", neg: "var(--neg)", neutral: "var(--muted)" };
+
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 16, opacity: loading ? 0.6 : 1, transition: "opacity .2s" }}>
+      <WarningStrip warnings={data.warnings} />
+
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(190px, 1fr))", gap: 16 }}>
+        <Card>
+          <Stat label="Deine Rendite" value={sgn(k.xirr)} tone={tone(k.xirr)}
+                sub={`pro Jahr seit ${(k.since || "").slice(0, 7)}${k.simple_return != null ? ` · gesamt ${sgn(k.simple_return)} (wie TR-App)` : ""}`} />
+        </Card>
+        <Card>
+          <Stat label={`${bl} (gleiche Einzahlungen)`} value={sgn(k.xirr_benchmark)}
+                delta={k.vs_benchmark != null ? `${k.vs_benchmark >= 0 ? "+" : ""}${fmtEUR(k.vs_benchmark, { decimals: 0 })} für dich` : null}
+                deltaTone={tone(k.vs_benchmark)} />
+        </Card>
+        <Card>
+          <Stat label="Inflation DE" value={sgn(k.inflation_cum)}
+                sub={`gesamt ${k.cpi_first_month} – ${k.cpi_last_month} · auf dein Geld gewichtet ${sgn(k.xirr_inflation)} p.a.`
+                     + (k.inflation_12m != null ? ` · letzte 12 Mon. ${sgn(k.inflation_12m)}` : "")} />
+        </Card>
+        <Card>
+          <Stat label="Real, nach Inflation" value={sgn(k.real_xirr)} tone={tone(k.real_xirr)}
+                delta={k.vs_inflation != null ? `${k.vs_inflation >= 0 ? "+" : ""}${fmtEUR(k.vs_inflation, { decimals: 0 })} Kaufkraft` : null}
+                deltaTone={tone(k.vs_inflation)} />
+        </Card>
+      </div>
+
+      <Card>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 12, flexWrap: "wrap", marginBottom: 14 }}>
+          <div>
+            <div style={{ fontSize: 15, fontWeight: 600 }}>Wertentwicklung</div>
+            <div style={{ fontSize: 12, color: "var(--muted)", marginTop: 3, maxWidth: 560, lineHeight: 1.5 }}>
+              Depotwert am Monatsende inkl. erhaltener Ausschüttungen. Zum Vergleich: dieselben Käufe und
+              Verkäufe am selben Tag in einen {bl}-ETF, und was das eingezahlte Geld wert sein müsste, um nur
+              seine Kaufkraft zu halten (HVPI Deutschland, Eurostat).
+            </div>
+          </div>
+          <Segmented size="sm" value={bench} onChange={setBench}
+                     options={(data.benchmarks || []).map(b => ({ value: b.key, label: b.label }))} />
+        </div>
+        <PerformanceChart rows={data.months} benchLabel={bl} />
+        <div style={{ display: "flex", gap: 20, flexWrap: "wrap", marginTop: 14, paddingTop: 12, borderTop: "1px solid var(--line)", fontSize: 12, color: "var(--muted)" }}>
+          <span>Depotwert <strong style={{ color: "var(--fg)", fontFamily: "var(--mono)" }}>{fmtEUR(k.value, { decimals: 0 })}</strong></span>
+          <span>+ Ausschüttungen <strong style={{ color: "var(--fg)", fontFamily: "var(--mono)" }}>{fmtEUR(k.dividends, { decimals: 0 })}</strong></span>
+          <span>Netto eingezahlt <strong style={{ color: "var(--fg)", fontFamily: "var(--mono)" }}>{fmtEUR(k.invested, { decimals: 0 })}</strong></span>
+          <span>Gewinn <strong style={{ color: k.gain >= 0 ? "var(--pos)" : "var(--neg)", fontFamily: "var(--mono)" }}>{fmtEUR(k.gain, { decimals: 0, sign: true })}</strong></span>
+          <span>{bl} <strong style={{ color: "var(--fg)", fontFamily: "var(--mono)" }}>{fmtEUR(k.benchmark_value, { decimals: 0 })}</strong></span>
+        </div>
+        <div style={{ fontSize: 11, color: "var(--muted)", marginTop: 8 }}>
+          {data.benchmark?.desc}. Renditen geldgewichtet (XIRR). Nur das TR-Depot — freies Guthaben und Krypto (eigener Tab) sind nicht enthalten.
+        </div>
+      </Card>
+
+      {(data.insights || []).length > 0 && (
+        <Card>
+          <div style={{ fontSize: 15, fontWeight: 600, marginBottom: 12 }}>Einordnung</div>
+          <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+            {data.insights.map((it, i) => (
+              <div key={i} style={{
+                display: "flex", gap: 12, padding: "12px 14px", borderRadius: 10,
+                background: "var(--bg-2)", borderLeft: `3px solid ${toneColor[it.tone] || "var(--muted)"}`,
+              }}>
+                <div>
+                  <div style={{ fontWeight: 600, fontSize: 13 }}>{it.title}</div>
+                  <div style={{ fontSize: 12.5, color: "var(--muted)", marginTop: 4, lineHeight: 1.55 }}>{it.text}</div>
+                </div>
+              </div>
+            ))}
+          </div>
+          <div style={{ fontSize: 11, color: "var(--muted)", marginTop: 12 }}>
+            Automatische Auswertung deiner Daten, keine Anlageberatung.
+          </div>
+        </Card>
+      )}
+    </div>
+  );
+};
+
+// ── Krypto (Kraken) ─────────────────────────────────────────────────────────
+// Getrennt von den Wertpapieren: die Benchmark-Rechnung gegen den MSCI World
+// bleibt so sauber, und Krypto hat eigene Steuerregeln (steuerfrei nach einem
+// Jahr Haltedauer, § 23 EStG).
+const KryptoTab = () => {
+  const { data, loading } = useFetch("/api/portfolio/crypto");
+  if (loading && !data) return <Spinner />;
+  if (!data || !data.positions?.length) return (
+    <EmptyState title="Kein Krypto-Bestand" desc="Lade den Kraken-Export hoch (Kraken → Dokumente → Export → Ledgers, CSV)." />
+  );
+  const s = data.summary;
+  const plColor = (v) => v == null ? "var(--muted)" : v >= 0 ? "var(--pos)" : "var(--neg)";
+  const fmtUnits = (u) => u >= 1 ? u.toLocaleString("de-DE", { maximumFractionDigits: 2 }) : u.toLocaleString("de-DE", { maximumSignificantDigits: 5 });
+  const upcoming = data.positions
+    .flatMap(p => p.pending_lots.filter(l => l.cost > 0).map(l => ({ ...l, symbol: p.symbol, value: p.price ? l.units * p.price : null })))
+    .sort((a, b) => a.date.localeCompare(b.date));
+
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: 16 }}>
+        <Card><Stat label="Krypto-Wert" value={fmtEUR(s.value)} large sub="aktueller Kurs" /></Card>
+        <Card><Stat label="Eingezahlt" value={fmtEUR(s.deposited, { decimals: 0 })} sub={s.fees_deposit > 0 ? `davon ${fmtEUR(s.fees_deposit)} Einzahlungsgebühr` : "netto"} /></Card>
+        <Card><Stat label="Ergebnis" value={fmtEUR(s.vs_deposited, { sign: true })} tone={s.vs_deposited >= 0 ? "pos" : "neg"}
+          delta={s.deposited ? `${(s.vs_deposited / s.deposited * 100).toFixed(1).replace(".", ",")} %` : null} deltaTone={s.vs_deposited >= 0 ? "pos" : "neg"}
+          sub="gegenüber eingezahlt" /></Card>
+      </div>
+
+      <Card padding={0}>
+        <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
+          <thead>
+            <tr style={{ color: "var(--muted)", fontSize: 10, textTransform: "uppercase", letterSpacing: "0.08em", borderBottom: "1px solid var(--line)" }}>
+              <th style={{ textAlign: "left", padding: "11px 20px", fontWeight: 500 }}>Coin</th>
+              <th style={{ textAlign: "right", padding: "11px 14px", fontWeight: 500 }}>Menge</th>
+              <th style={{ textAlign: "right", padding: "11px 14px", fontWeight: 500 }}>Kurs</th>
+              <th style={{ textAlign: "right", padding: "11px 14px", fontWeight: 500 }}>Einstand</th>
+              <th style={{ textAlign: "right", padding: "11px 14px", fontWeight: 500 }}>Wert</th>
+              <th style={{ textAlign: "right", padding: "11px 14px", fontWeight: 500 }}>G/V</th>
+              <th style={{ textAlign: "right", padding: "11px 20px", fontWeight: 500 }}>Steuerfrei</th>
+            </tr>
+          </thead>
+          <tbody>
+            {data.positions.map(p => (
+              <tr key={p.symbol} style={{ borderBottom: "1px solid var(--line)" }}>
+                <td style={{ padding: "12px 20px" }}>
+                  <div style={{ fontWeight: 500 }}>{p.name}</div>
+                  <div style={{ fontSize: 10, color: "var(--muted)", fontFamily: "var(--mono)", marginTop: 2 }}>
+                    {p.symbol}{p.is_stable && " · Stablecoin (1 USD)"}{p.cost === 0 && " · geschenkt/Bonus"}
+                  </div>
+                </td>
+                <td style={{ padding: "12px 14px", textAlign: "right", fontFamily: "var(--mono)", fontSize: 12 }}>{fmtUnits(p.units)}</td>
+                <td style={{ padding: "12px 14px", textAlign: "right", fontFamily: "var(--mono)", fontSize: 12 }}>{p.price != null ? fmtEUR(p.price) : "—"}</td>
+                <td style={{ padding: "12px 14px", textAlign: "right", fontFamily: "var(--mono)", fontSize: 12 }}>{fmtEUR(p.cost)}</td>
+                <td style={{ padding: "12px 14px", textAlign: "right", fontFamily: "var(--mono)", fontWeight: 600 }}>{p.value != null ? fmtEUR(p.value) : "—"}</td>
+                <td style={{ padding: "12px 14px", textAlign: "right" }}>
+                  <div style={{ fontFamily: "var(--mono)", color: plColor(p.pl) }}>{p.pl != null ? fmtEUR(p.pl, { sign: true }) : "—"}</div>
+                  {p.pl_pct != null && <div style={{ fontSize: 10, fontFamily: "var(--mono)", color: plColor(p.pl_pct) }}>{p.pl_pct > 0 ? "+" : ""}{p.pl_pct.toFixed(1).replace(".", ",")} %</div>}
+                </td>
+                <td style={{ padding: "12px 20px", textAlign: "right", fontFamily: "var(--mono)", fontSize: 12, color: p.tax_free_share >= 99.9 ? "var(--pos)" : "var(--fg)" }}>
+                  {p.tax_free_share.toFixed(0)} %
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </Card>
+
+      <Card>
+        <div style={{ fontSize: 15, fontWeight: 600 }}>Wann wird was steuerfrei?</div>
+        <div style={{ fontSize: 12, color: "var(--muted)", margin: "4px 0 12px", lineHeight: 1.5 }}>
+          Krypto-Gewinne sind in Deutschland nach mehr als einem Jahr Haltedauer steuerfrei (§ 23 EStG). Verkauft wird nach
+          FIFO — zuerst die ältesten Käufe. Ein Verkauf vor dem Datum unten wäre für diesen Teil steuerpflichtig, sofern alle
+          privaten Veräußerungsgewinne im Jahr 1.000 € übersteigen.
+        </div>
+        {upcoming.length === 0 ? (
+          <div style={{ fontSize: 13, color: "var(--pos)" }}>Alle gekauften Bestände sind bereits steuerfrei.</div>
+        ) : (
+          <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+            {upcoming.map((l, i) => (
+              <div key={i} style={{ display: "flex", justifyContent: "space-between", gap: 12, fontSize: 13, padding: "8px 12px", background: "var(--bg-2)", borderRadius: 8 }}>
+                <span>{fmtUnits(l.units)} {l.symbol} <span style={{ color: "var(--muted)" }}>· Einstand {fmtEUR(l.cost, { decimals: 0 })}{l.value != null ? ` · heute ${fmtEUR(l.value, { decimals: 0 })}` : ""}</span></span>
+                <span style={{ fontFamily: "var(--mono)" }}>ab {fmtDate(l.date)}</span>
+              </div>
+            ))}
+          </div>
+        )}
+        <div style={{ fontSize: 11, color: "var(--muted)", marginTop: 10 }}>
+          Staking-Belohnungen und Boni sind mit Einstand 0 € erfasst. Keine Steuerberatung.
+        </div>
+      </Card>
+    </div>
+  );
+};

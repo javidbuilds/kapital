@@ -49,7 +49,9 @@ _BASE_CATEGORIES = [
 ]
 
 # Categories treated as "savings" in the analytics (not counted as living expenses)
-SAVINGS_CATEGORIES = {"Investment & Sparen", "Vermögensaufbau"}
+# "Kaution": hinterlegtes Geld, das zurückkommt — kein Konsum, sondern Vermögen
+# (siehe contracts.py). Vorher lag die Mietkaution in "Wohnen".
+SAVINGS_CATEGORIES = {"Investment & Sparen", "Vermögensaufbau", "Kaution"}
 
 # Geliehenes Geld und seine Tilgung. Wird wie eine Umbuchung behandelt und
 # taucht in keiner wirtschaftlichen Auswertung auf.
@@ -96,6 +98,9 @@ COLUMNS = [
     "account", "account_label",
     "category", "is_transfer", "transfer_id", "tx_hash", "notes",
     "is_sonderausgabe",  # bool – one-time / special expense flag
+    "reviewed",          # bool – Kategorie vom User bestätigt (auch "Sonstiges")
+    "booking_date",      # datetime – echtes Buchungsdatum, wenn `date` für die
+                         # Monatsauswertung verschoben wurde (siehe month_shift.py)
     # Portfolio fields (only populated for buy/sell/dividend transactions)
     "isin",   # str  – ISIN of the security
     "units",  # float – number of shares/units (positive=buy, negative=sell)

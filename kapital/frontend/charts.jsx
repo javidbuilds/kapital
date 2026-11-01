@@ -37,7 +37,7 @@ const Sparkline = ({ values, width = 120, height = 32, stroke = "var(--accent)",
   const area = `${d} L${width},${height} L0,${height} Z`;
   return (
     <svg width={width} height={height} style={{ display: "block", overflow: "visible" }}>
-      {fill && <path d={area} fill={stroke} opacity="0.12" />}
+      {fill && <path d={area} fill={stroke} opacity="0.2" />}
       <path d={d} fill="none" stroke={stroke} strokeWidth={strokeWidth} strokeLinecap="round" strokeLinejoin="round" />
     </svg>
   );
@@ -249,9 +249,13 @@ const BarChart = ({ data, width = 800, height = 220, fill = false, posKey = "in"
           const isHovered = tooltip?.d === d;
           return (
             <g key={i} onMouseEnter={(e) => showTip(e, d)} onMouseMove={(e) => showTip(e, d)}>
-              <rect x={cx - barW - 1} y={midY - posH} width={barW} height={posH} fill="var(--pos)" rx="2" opacity={isHovered ? 1 : 0.85} />
-              <rect x={cx + 1} y={midY} width={barW} height={negH} fill="var(--neg)" rx="2" opacity={isHovered ? 1 : 0.7} />
-              <text x={cx} y={H - padB + 16} textAnchor="middle" fontSize="10" fill={isHovered ? "var(--fg)" : "var(--muted)"} fontFamily="var(--mono)">{d[xKey]}</text>
+              <rect x={cx - barW - 1} y={midY - posH} width={barW} height={posH} fill="var(--pos)" rx="2" opacity={isHovered ? 1 : 0.95} />
+              <rect x={cx + 1} y={midY} width={barW} height={negH} fill="var(--neg)" rx="2" opacity={isHovered ? 1 : 0.9} />
+              {/* Nur jede n-te Beschriftung: bei "Gesamt" sind es 90+ Monate,
+                  die Labels lagen sonst unlesbar übereinander. */}
+              {(isHovered || i % Math.max(1, Math.ceil(58 / slot)) === 0) && (
+                <text x={cx} y={H - padB + 16} textAnchor="middle" fontSize="10" fill={isHovered ? "var(--fg)" : "var(--muted)"} fontFamily="var(--mono)">{d[xKey]}</text>
+              )}
             </g>
           );
         })}

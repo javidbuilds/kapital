@@ -70,12 +70,15 @@ def load() -> pd.DataFrame:
         # Back-fill columns added in later versions
         for col in COLUMNS:
             if col not in df.columns:
-                if col in ("is_transfer", "is_sonderausgabe"):
+                if col in ("is_transfer", "is_sonderausgabe", "reviewed"):
                     df[col] = False
                 elif col in ("units", "price_per_unit"):
                     df[col] = 0.0
+                elif col == "booking_date":
+                    df[col] = pd.NaT
                 else:
                     df[col] = ""
+        df["booking_date"] = pd.to_datetime(df["booking_date"], errors="coerce")
         df["units"] = pd.to_numeric(df["units"], errors="coerce").fillna(0.0)
         df["price_per_unit"] = pd.to_numeric(df["price_per_unit"], errors="coerce").fillna(0.0)
         return df[COLUMNS].reset_index(drop=True)
@@ -114,9 +117,11 @@ def save(df: pd.DataFrame) -> None:
     # Bool-Spalten robust nach echtem bool casten: gemischte Werte (z. B. "" aus
     # neu geparsten Zeilen + True/False aus Bestand) lassen den Parquet-Write sonst
     # scheitern ("Could not convert '' with type str: tried to convert to boolean").
-    for col in ("is_transfer", "is_sonderausgabe"):
+    for col in ("is_transfer", "is_sonderausgabe", "reviewed"):
         if col in out.columns:
             out[col] = out[col].replace("", False).fillna(False).astype(bool)
+
+    out["booking_date"] = pd.to_datetime(out["booking_date"], errors="coerce")
 
     _rotate_versions(STORE_PATH)
     tmp = STORE_PATH.with_suffix(STORE_PATH.suffix + ".tmp")
@@ -300,6 +305,25 @@ def save_tr_cash_balance(val: float) -> None:
 
 # ── Deduplication helpers ─────────────────────────────────────────────────────
 
+def _account_identity(df: pd.DataFrame) -> pd.Series:
+    """Welches KONTO (nicht welcher Kontotyp) eine Zeile ist.
+
+    tx_hash und Inhaltsschlüssel verwenden den Kontotyp ("Giro") — für alle drei
+    ING-Konten derselbe. Zwei echte Buchungen gleichen Tags, Betrags und Texts
+    auf verschiedenen ING-Konten galten deshalb als Duplikat: eine Umbuchung
+    vom Tagesgeld fiel so weg, wenn das Girokonto am selben Tag dieselbe
+    Umbuchung hatte.
+
+    Aufgelöst über iban_labels.json, damit "Giro", "DE00 1234 …" und
+    "DE52500…" dasselbe Konto bleiben.
+    """
+    labels = load_iban_labels() or {}
+    norm = lambda v: str(v or "").replace(" ", "").upper()
+    by_norm = {norm(k): norm(v) for k, v in labels.items()}
+    raw = df["account_label"].fillna("").map(norm)
+    return raw.map(lambda r: by_norm.get(r, r))
+
+
 def _content_key(df: pd.DataFrame) -> pd.Series:
     """Fallback dedup key: (date, amount, account-type, description[:60]).
 
@@ -311,6 +335,23 @@ def _content_key(df: pd.DataFrame) -> pd.Series:
         + "|" + df["amount"].map(lambda x: f"{x:.2f}")
         + "|" + df["account"].fillna("")
         + "|" + df["description"].fillna("").str[:60]
+    )
+
+
+def _loose_content_key(df: pd.DataFrame) -> pd.Series:
+    """Wie _content_key, aber der Text nur aus a–z/0–9.
+
+    Ältere Importe haben Umlaute falsch dekodiert ("Ðberweisung" statt
+    "Überweisung"). Dieselbe Buchung kam beim erneuten Import der Datei
+    dadurch ein zweites Mal herein.
+    """
+    text = (df["description"].fillna("").str.lower()
+            .str.replace(r"[^a-z0-9]", "", regex=True).str[:50])
+    return (
+        df["date"].dt.strftime("%Y-%m-%d")
+        + "|" + df["amount"].map(lambda x: f"{x:.2f}")
+        + "|" + df["account"].fillna("")
+        + "|" + text
     )
 
 
@@ -348,19 +389,28 @@ def merge(existing: pd.DataFrame, new_df: pd.DataFrame) -> tuple[pd.DataFrame, i
         merged = new_df.copy()
         return merged.sort_values("date").reset_index(drop=True), len(merged), 0
 
-    # Pass 1: hash-based dedup (fast)
-    existing_hashes = set(existing["tx_hash"].dropna())
-    new_mask = ~new_df["tx_hash"].isin(existing_hashes)
+    # Pass 1: Hash UND Konto. Der Hash allein unterscheidet die ING-Konten
+    # nicht (siehe _account_identity).
+    ex_ident = _account_identity(existing)
+    existing_hashes = set(existing["tx_hash"].fillna("") + "|" + ex_ident)
+    new_mask = ~(new_df["tx_hash"].fillna("") + "|" + _account_identity(new_df)).isin(existing_hashes)
     truly_new = new_df[new_mask]
     n_dupes = len(new_df) - len(truly_new)
 
     # Pass 2: content-key fallback (catches label-rename duplicates)
     if not truly_new.empty:
-        existing_keys = set(_content_key(existing))
-        new_keys = _content_key(truly_new)
+        existing_keys = set(_content_key(existing) + "|" + ex_ident)
+        new_keys = _content_key(truly_new) + "|" + _account_identity(truly_new)
         content_mask = ~new_keys.isin(existing_keys)
         n_dupes += int((~content_mask).sum())
         truly_new = truly_new[content_mask]
+
+    # Pass 3: derselbe Inhalt mit kaputt dekodierten Umlauten
+    if not truly_new.empty:
+        existing_loose = set(_loose_content_key(existing) + "|" + ex_ident)
+        loose_mask = ~(_loose_content_key(truly_new) + "|" + _account_identity(truly_new)).isin(existing_loose)
+        n_dupes += int((~loose_mask).sum())
+        truly_new = truly_new[loose_mask]
 
     n_added = len(truly_new)
 

@@ -7,10 +7,9 @@ const PAGE_META = {
   transactions:     { title: "Buchungen",         subtitle: "Transaktionen" },
   categories:       { title: "Kategorien & Budgets", subtitle: "Kategorisierung" },
   portfolio:        { title: "Portfolio",          subtitle: "Trade Republic" },
-  forecast:         { title: "Vermögensprognose", subtitle: "Forecast" },
+  ziele:            { title: "Ziele",             subtitle: "Prognose & Unabhängigkeit" },
   jahresuebersicht: { title: "Jahresübersicht",   subtitle: "Statistik" },
   abos:             { title: "Abonnements",        subtitle: "Abos & Wiederkehrend" },
-  fire:             { title: "FIRE-Rechner",       subtitle: "Financial Independence" },
   steuer:           { title: "Steuervorbereitung", subtitle: "Kapitalerträge" },
   regeln:           { title: "Kategorien-Regeln",  subtitle: "Auto-Kategorisierung" },
   vermoegen:        { title: "Vermögen",           subtitle: "Verlauf & Konten" },
@@ -24,10 +23,9 @@ const PAGES = {
   transactions:     PageTransactions,
   categories:       PageCategories,
   portfolio:        PagePortfolio,
-  forecast:         PageForecast,
+  ziele:            PageZiele,
   jahresuebersicht: PageJahresuebersicht,
   abos:             PageAbos,
-  fire:             PageFire,
   steuer:           PageSteuer,
   regeln:           PageRegeln,
 };
@@ -36,7 +34,9 @@ const PAGES = {
 // Lesezeichen, kein Zurück-Button, und jedes Neuladen landete auf der
 // Übersicht — bei dreizehn Ansichten spürbar.
 const pageFromHash = () => {
-  const id = (window.location.hash || "").replace(/^#\/?/, "").split("?")[0];
+  let id = (window.location.hash || "").replace(/^#\/?/, "").split("?")[0];
+  // FIRE-Rechner und Prognose sind in "Ziele" aufgegangen — alte Lesezeichen weiterleiten.
+  if (id === "fire" || id === "forecast") id = "ziele";
   return PAGES[id] ? id : "dashboard";
 };
 
@@ -52,7 +52,7 @@ const App = () => {
   React.useEffect(() => {
     const onHash = () => _setActive(pageFromHash());
     window.addEventListener("hashchange", onHash);
-    if (!window.location.hash) window.location.replace(`#/${active}`);
+    if (!window.location.hash || /^#\/?(fire|forecast)\b/.test(window.location.hash)) window.location.replace(`#/${active}`);
     return () => window.removeEventListener("hashchange", onHash);
   }, []);
   const [review, setReview] = React.useState(null);   // { months: [...] } | null
@@ -67,7 +67,14 @@ const App = () => {
       .catch(() => {});
   }, []);
 
-  React.useEffect(() => { refreshOpen(); }, [refreshOpen]);
+  // Neu zählen bei jedem Seitenwechsel und wenn eine Seite meldet, dass sich
+  // Zuordnungen geändert haben (Import, Kategorie in der Buchungsliste). Vorher
+  // nur beim Start: der Zähler zeigte danach einen veralteten Stand.
+  React.useEffect(() => { refreshOpen(); }, [refreshOpen, active]);
+  React.useEffect(() => {
+    window.addEventListener("kapital:open-changed", refreshOpen);
+    return () => window.removeEventListener("kapital:open-changed", refreshOpen);
+  }, [refreshOpen]);
 
   // Andere Seiten (Import, Monatsabschluss) öffnen das Gate über ein Event
   React.useEffect(() => {

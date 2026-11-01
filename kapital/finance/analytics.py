@@ -93,8 +93,9 @@ def period_summary(df: pd.DataFrame) -> dict:
       total_income        – Einkommen category only (salary, dividends, etc.)
       total_expenses      – pure consumption outflows (excludes investments)
       total_refunds       – positive non-Einkommen flows (refunds, cashbacks)
-      total_invested      – investment outflows (absolute)
-      net_cashflow        – income + refunds – expenses – investments
+      total_invested      – NETTO investiert: Käufe minus Verkäufe/Entnahmen
+                            in Spar-/Anlagekategorien (negativ = netto entnommen)
+      net_cashflow        – income + refunds – expenses – net investments
       savings             – income – net_spending, where net_spending = expenses – refunds
       savings_rate        – savings / income
       n_transactions
@@ -102,7 +103,11 @@ def period_summary(df: pd.DataFrame) -> dict:
     inc     = _income(df)["amount"].sum()
     refunds = _refunds(df)["amount"].sum()
     exp     = abs(_expenses(df)["amount"].sum())
-    inv     = abs(_investments(df)[_investments(df)["amount"] < 0]["amount"].sum())
+    # Netto: Verkaufserlöse zählen gegen die Käufe. Vorher zählten nur die
+    # Käufe — wer eine Aktie verkauft und vom Erlös einen ETF kauft, hatte
+    # dann einen "Abfluss" ohne Zufluss. So konnte aus einem
+    # Überschuss rechnerisch ein Minus werden.
+    inv     = -float(_investments(df)["amount"].sum())
 
     # net_spending can be negative when refunds exceed consumption (e.g. big insurance payout)
     net_spending = exp - refunds
@@ -155,12 +160,11 @@ def monthly_summary(df: pd.DataFrame) -> pd.DataFrame:
         .abs()
         .rename("ausgaben")
     )
+    # Netto investiert (Käufe minus Verkäufe), wie in period_summary.
     invest_m = (
-        r[r["category"].isin(SAVINGS_CATEGORIES) & (r["amount"] < 0)]
+        -r[r["category"].isin(SAVINGS_CATEGORIES)]
         .groupby("ym")["amount"].sum()
-        .abs()
-        .rename("investiert")
-    )
+    ).rename("investiert")
 
     summary = pd.concat([income_m, refunds_m, expense_m, invest_m], axis=1).fillna(0)
     # net_spending can go negative when refunds exceed consumption

@@ -80,17 +80,35 @@ Beenden mit **Strg + C** im Terminal (bzw. dem roten Stopp-Knopf in VS Code).
 Port belegt? → `KAPITAL_PORT=8600` davor setzen, oder auf macOS/Linux
 `python -m kapital.run --restart` (beendet eine hängengebliebene Instanz).
 
+**Variante C – als App im Dock (macOS):** einmalig
+
+```bash
+kapital/tools/macos/install_apps.sh
+```
+
+Das legt in `~/Applications` die Apps **Kapital** (startet den Server im
+Hintergrund und öffnet ein eigenes Fenster) und **Kapital beenden** an.
+Beim ersten Öffnen ggf. Rechtsklick → *Öffnen* (die App ist nicht signiert).
+Protokoll: `~/Library/Logs/Kapital.log`.
+
 ## 5. Erste Schritte in der App
 
 1. Tab **Daten importieren**: Kontoauszug als CSV hochladen. Erkannt werden
    **DKB, ING, Sparkasse, Comdirect** (Giro-CSV), **PayPal** (CSV) und
-   **Trade Republic** (CSV-Export oder PDF-Auszüge).
+   **Trade Republic** (CSV-Export; PDF nur der *Depotauszug* für den aktuellen
+   Depotstand) und **Kraken** (Ledger-Export als CSV, für Krypto).
    Mehrfach hochladen ist unkritisch – doppelte Buchungen werden erkannt.
 2. Nach dem Upload öffnet sich die **Zuordnung**: Buchungen, die keiner
    Kategorie zugeordnet werden konnten, einmal zuweisen. Daraus lernt die App
    Regeln für die Zukunft (Tab **Kategorien-Regeln**).
-3. Optional im Tab **Vermögen**: echte Kontostände eintragen, damit
-   das Vermögen stimmt.
+3. Kontostände: Bei ING-Exporten übernimmt die App den Saldo aus dem Dateikopf
+   automatisch. Sonst im Tab **Vermögen** echte Kontostände eintragen.
+4. Optional **Verträge** (private Renten-/Lebensversicherungen, Mietkaution):
+   in `data/contracts.json` anlegen (Format siehe `kapital/finance/contracts.py`),
+   danach im Tab **Vermögen** den Rückkaufswert eintragen.
+5. Tab **Ziele**: Notgroschen, Eigenkapital und finanzielle Unabhängigkeit
+   planen – für Letzteres die Werte aus der Renteninformation eintragen
+   („bereits erreicht“ und „bei Fortsetzung der Beiträge“).
 
 ### Optional: KI-Monatsbewertung
 
@@ -100,6 +118,13 @@ paar Cent pro Bewertung). Den Key trägst du direkt in der App ein; er wird nur
 lokal in `data/settings.json` gespeichert.
 Gesendet werden dabei **nur aggregierte Zahlen** (Kategoriesummen, Top-Händler),
 keine IBANs, keine Kontoauszüge. Ohne Key funktioniert alles andere normal.
+
+### Online-Abrufe
+
+Für Kursverläufe (Portfolio → Entwicklung, Krypto, Vermögensverlauf) fragt die
+App **yfinance** nach öffentlichen Kursen, für die Inflation **Eurostat**
+(HVPI Deutschland). Dabei werden nur Ticker bzw. ISINs abgefragt – keine
+Beträge, keine Kontodaten. Die Ergebnisse werden in `data/` zwischengespeichert.
 
 ## 6. Deine Daten
 

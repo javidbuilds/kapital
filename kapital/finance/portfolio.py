@@ -539,6 +539,7 @@ def merge_with_snapshot(
     positions: pd.DataFrame,
     snapshot: pd.DataFrame,
     closed_after_snapshot: Optional[set] = None,
+    snapshot_date: Optional[str] = None,
 ) -> pd.DataFrame:
     """
     Merge reconstructed positions with a Depotauszug snapshot.
@@ -555,6 +556,12 @@ def merge_with_snapshot(
     snap = snap.rename(columns={"units": "units_held", "current_value": "snap_value"})
     snap["units_held"] = pd.to_numeric(snap["units_held"], errors="coerce").fillna(0)
     snap["snap_value"] = pd.to_numeric(snap["snap_value"], errors="coerce")
+    # Zeilen ohne Stückzahl sind keine Positionen. Mit fillna(0) hätten sie die
+    # gleichnamige Transaktions-Position auf 0 Stück gesetzt und damit
+    # ausgeblendet — so verschwand das halbe Depot nach einem Fehlimport.
+    snap = snap[snap["units_held"] > 0]
+    if snap.empty:
+        return positions
 
     if positions.empty:
         # No transaction data — use snapshot entirely
@@ -591,6 +598,15 @@ def merge_with_snapshot(
     if closed_after_snapshot:
         closed = merged["isin"].isin(set(closed_after_snapshot))
         merged.loc[closed, "units_held"] = 0.0
+    # Umgekehrt: fehlt eine Position im Snapshot, obwohl ihr letzter Kauf VOR
+    # dem Stichtag lag, ist sie zum Stichtag nicht mehr im Depot (verfallener
+    # Optionsschein, Zwangsumtausch, Ausbuchung ohne Verkaufsbuchung). Ohne
+    # diese Regel bleibt sie als Geisterbestand mit Wert 0 stehen.
+    if snapshot_date and "last_buy" in merged.columns:
+        cutoff = pd.Timestamp(snapshot_date)
+        last_buy = pd.to_datetime(merged["last_buy"], errors="coerce")
+        gone = merged["units_held_snap"].isna() & last_buy.notna() & (last_buy <= cutoff)
+        merged.loc[gone, "units_held"] = 0.0
 
     # Current value from snapshot (für tx-only Positionen liegt kein Snapshot-Wert vor)
     merged["current_value"] = merged["snap_value"]
@@ -601,6 +617,15 @@ def merge_with_snapshot(
     # Unrealized gain only if we have avg_buy_price
     if "avg_buy_price" not in merged.columns:
         merged["avg_buy_price"] = np.nan
+    # Einstand gesamt bleibt bei einem Aktiensplit gleich, die Stückzahl nicht.
+    # Der Snapshot zählt nach dem Split (z. B. 20 Stück), die Buchungen davor
+    # (4 Stück). Ø-Kurs × Snapshot-Stück ergab den fünffachen Einstand.
+    # Deshalb: Einstand aus den Buchungen, Ø-Kurs daraus neu.
+    if "cost_basis" in merged.columns:
+        has_cost = merged["cost_basis"].notna() & (merged["cost_basis"] > 0) & (merged["units_held"] > 0)
+        merged.loc[has_cost, "avg_buy_price"] = (
+            merged.loc[has_cost, "cost_basis"] / merged.loc[has_cost, "units_held"]
+        )
     # units_held > 0 gehört zwingend in die Maske: eine geschlossene Position
     # hat keinen Buchgewinn, und der Nenner (Einstand × Stückzahl) wäre 0.
     mask = (
@@ -638,10 +663,12 @@ def merge_with_snapshot(
     recomputed = merged.apply(
         lambda r: _is_etf(str(r.get("isin", "")), str(r.get("name", ""))), axis=1
     )
-    merged["is_etf"] = tx_etf.where(tx_etf.notna(), recomputed).astype(bool)
+    # ODER statt "tx bevorzugt": der Buchungsname ist oft verkürzt ("Quantum
+    # Computing"), der Snapshot-Name verrät den Fonds ("VanEck ETF-…").
+    merged["is_etf"] = tx_etf.fillna(False).astype(bool) | recomputed.astype(bool)
 
     cols = [
-        "isin", "name", "is_etf", "units_held", "avg_buy_price", "total_invested",
+        "isin", "name", "is_etf", "units_held", "avg_buy_price", "cost_basis", "total_invested",
         "total_sold", "realized_gain", "n_buys", "n_sells", "first_buy", "last_buy",
         "current_price", "current_value", "unrealized_gain", "gain_pct",
     ]

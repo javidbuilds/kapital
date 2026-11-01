@@ -230,8 +230,7 @@ const NAV_GROUPS = [
   { label: "Vermögen", items: [
     { id: "vermoegen",       label: "Vermögen",        icon: "bank" },
     { id: "portfolio",       label: "Portfolio",       icon: "portfolio" },
-    { id: "forecast",        label: "Prognose",        icon: "forecast" },
-    { id: "fire",            label: "FIRE-Rechner",    icon: "fire" },
+    { id: "ziele",           label: "Ziele",           icon: "forecast" },
   ]},
   { label: "Auswertung & Pflege", items: [
     { id: "jahresuebersicht",label: "Jahresübersicht", icon: "year" },
@@ -249,7 +248,7 @@ const NAV_ITEMS = NAV_GROUPS.flatMap(g => g.items);
 // 2px-Linien sind sie nicht unterscheidbar, weil sie nie dafür gewählt wurden.
 // Für Verläufe deshalb eine eigene, abgestufte Sequenz mit ausreichendem
 // Helligkeitsabstand; bei mehr als fünf Reihen hilft ohnehin keine Farbe mehr.
-const CHART_SERIES = ["#7d9fe0", "#d1a24f", "#5fa774", "#b98ec9", "#7ec8c3"];
+const CHART_SERIES = ["#6b9bff", "#ffb547", "#3fd17a", "#c58cff", "#2fd4c4"];
 
 // Geld hat zwei Lautstärken. Ein Gewinn von 12 € und einer von 12.000 € sollen
 // nicht gleich schreien — sonst stumpft die Farbe ab, wie beim roten

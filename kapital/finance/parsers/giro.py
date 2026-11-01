@@ -429,6 +429,30 @@ def extract_balance(text: str) -> Optional[tuple[float, str]]:
 
 # ── Public entry point ────────────────────────────────────────────────────────
 
+def extract_balance(uploaded_file) -> Optional[tuple[float, str]]:
+    """Kontostand aus dem Dateikopf (ING: "Saldo;1.234,56;EUR").
+
+    Gibt (saldo, stichtag 'YYYY-MM-DD') zurück. Stichtag ist das
+    Erstellungsdatum der Datei ("Datei erstellt am: 01.01.2026 12:00") —
+    alle bis dahin gebuchten Umsätze stecken im Saldo, spätere nicht.
+    None, wenn die Datei keinen Saldo trägt.
+    """
+    try:
+        text = decode(read_bytes(uploaded_file))
+    except Exception:
+        return None
+    head = text[:1500]
+    m = re.search(r'^\s*"?Saldo"?\s*;\s*"?([-\d.,]+)', head, re.MULTILINE)
+    if not m:
+        return None
+    saldo = parse_german_amount(m.group(1))
+    if saldo is None:
+        return None
+    d = re.search(r'erstellt am:?\s*(\d{2}\.\d{2}\.\d{4})', head, re.IGNORECASE)
+    when = parse_german_date(d.group(1)) if d else None
+    return float(saldo), (when.strftime("%Y-%m-%d") if when is not None else "")
+
+
 def parse_giro(uploaded_file, account_label: str = "") -> pd.DataFrame:
     """
     Auto-detect bank format and parse into normalized DataFrame.

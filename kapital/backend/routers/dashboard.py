@@ -64,6 +64,11 @@ def get_dashboard(
     # df_base: nur datums-/kontogefiltert (Basis für Kontosalden).
     # df: zusätzlich sonderausgaben-gefiltert (Basis für Cashflow-Analysen).
     df_base = _apply_filters(full_df, date_from, date_to, account)
+    # Kraken-Staking (0,00 €, wöchentlich) gehört in den Krypto-Bestand, nicht
+    # in "Letzte Buchungen" oder die Buchungszahl.
+    if not df_base.empty:
+        df_base = df_base[~((df_base["account"] == "Kraken") & (df_base["amount"] == 0)
+                            & df_base["description"].str.startswith("STAKING", na=False))]
     df = df_base
     if exclude_sonderausgaben and "is_sonderausgabe" in df_base.columns:
         df = df_base[~df_base["is_sonderausgabe"].astype(bool)]
@@ -93,13 +98,10 @@ def get_dashboard(
     #     beides war gespeichert und wurde nie gelesen.
     from kapital.finance import networth as nw
     acc_rows = nw.account_balances(full_df)
+    # Dass ein Konto unter mehreren Bezeichnungen im Bestand liegt, ist
+    # Hausarbeit der App und wird still zusammengeführt — als Dauerwarnung
+    # oben auf der Startseite hat es nur gestört.
     warnings: list[str] = []
-    for a in acc_rows:
-        if len(a["raw_labels"]) > 1:
-            warnings.append(
-                f"{a['name']} lag unter {len(a['raw_labels'])} verschiedenen "
-                f"Kontobezeichnungen im Bestand und wird jetzt als ein Konto gezeigt."
-            )
     if any(not a["calibrated"] for a in acc_rows):
         warnings.append(
             "Für Konten ohne hinterlegten Kontostand wird der kumulierte "
@@ -157,7 +159,12 @@ def get_dashboard(
             "category": str(r.get("category", "Sonstiges")),
             "account": str(r.get("account_label", "")),
             "is_sonderausgabe": bool(r.get("is_sonderausgabe", False)),
-            **cats.get(str(r.get("category", "")), cat_meta(str(r.get("category", "")))),
+            # Nur Farbe/Icon der Kategorie übernehmen. Vorher wurde das ganze
+            # Kategorie-Objekt hineingemischt — sein "id" überschrieb die
+            # Buchungs-ID, und alle Buchungen einer Kategorie teilten sich
+            # denselben React-Key ("Reisen & Urlaub" sechsmal).
+            **{k: v for k, v in cats.get(str(r.get("category", "")), cat_meta(str(r.get("category", "")))).items()
+               if k in ("color", "icon")},
         }
         for _, r in single.iterrows()
     ]
@@ -230,6 +237,9 @@ def get_dashboard(
         "warnings": warnings,
         "summary": {k: round(float(v), 2) if isinstance(v, float) else v for k, v in summary.items()},
         "accounts": acc_rows,
+        "depot": {"value": nw.depot_value(), "as_of": storage.load_depot_snapshot_date()},
+        "crypto": {"value": _crypto_value(full_df)},
+        "contracts": _contracts_eval(full_df),
         "top_categories": top_categories,
         "top_expenses": top_expenses,
         "top_expenses_hidden": hidden_by_category,
@@ -239,6 +249,16 @@ def get_dashboard(
         "monthly_cashflow": monthly_cashflow,
         "all_accounts": all_accounts,
     }
+
+
+def _contracts_eval(df):
+    from kapital.finance import contracts
+    return contracts.evaluate(df)
+
+
+def _crypto_value(df):
+    from kapital.finance import crypto
+    return crypto.total_value(df)
 
 
 @router.get("/baseline")

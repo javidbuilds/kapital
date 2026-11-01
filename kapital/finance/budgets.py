@@ -104,10 +104,26 @@ def last_complete_month(df: pd.DataFrame, today: pd.Timestamp | None = None) -> 
     months = data_months(df)
     if not months:
         return None
-    today = today or pd.Timestamp.today()
+    today = (today or pd.Timestamp.today()).normalize()
     current = today.to_period("M")
     candidates = [m for m in months if pd.Period(m, "M") < current]
+    # Der laufende Monat zählt als abgeschlossen, wenn er praktisch vorbei ist
+    # UND die Daten bis kurz vor sein Ende reichen. Sonst sieht man am Monatsletzten
+    # mit vollständig importiertem Monat weder im Monatsabschluss noch in der
+    # Grundlast diesen Monat — genau dann, wenn man ihn abschließen will.
+    if str(current) in months:
+        month_end = current.end_time.normalize()
+        latest = df["date"].max()
+        if (month_end - today).days <= _CLOSE_GRACE_DAYS and pd.notna(latest) \
+                and latest.normalize() >= month_end - pd.Timedelta(days=_DATA_REACH_DAYS):
+            candidates.append(str(current))
     return candidates[-1] if candidates else None
+
+
+# Ab so vielen Tagen vor Monatsende darf der laufende Monat abgeschlossen werden …
+_CLOSE_GRACE_DAYS = 2
+# … sofern die letzte importierte Buchung höchstens so weit vor dem Ende liegt.
+_DATA_REACH_DAYS = 5
 
 
 # ── Monatsübersicht ───────────────────────────────────────────────────────────

@@ -24,15 +24,15 @@
   --line: rgba(158,166,180,0.13);  --line-strong: rgba(158,166,180,0.22);
   --fg: #e9e7e4;    --fg-soft: #c3c2c0;   --muted: #8a8f99;
 
-  /* Interaktion — entsättigt, nie mit Geld zu verwechseln */
-  --accent: #7d9fe0;  --accent-soft: rgba(125,159,224,0.16);  --on-accent: #10131a;
+  /* Interaktion — kräftig, aber Blau: nie mit Geld (Grün/Rot) zu verwechseln */
+  --accent: #6b9bff;  --accent-soft: rgba(107,155,255,0.18);  --on-accent: #0b0f18;
   --shadow: rgba(0,0,0,0.45);
 
   /* Geld. Zwei Stufen je Richtung: kleine Beträge dürfen leiser sein. */
-  --pos: #5fa774;   --pos-dim: rgba(95,167,116,0.55);  --pos-soft: rgba(95,167,116,0.14);
-  --neg: #cf6f66;   --neg-dim: rgba(207,111,102,0.55); --neg-soft: rgba(207,111,102,0.14);
-  --warn: #d1a24f;  --warn-dim: #b9873a; --warning: #b9873a; --over: #c98553;
-  --warn-soft: rgba(209,162,79,0.13);
+  --pos: #3fd17a;   --pos-dim: rgba(63,209,122,0.6);   --pos-soft: rgba(63,209,122,0.15);
+  --neg: #ff6b61;   --neg-dim: rgba(255,107,97,0.6);   --neg-soft: rgba(255,107,97,0.15);
+  --warn: #ffb547;  --warn-dim: #e8a032; --warning: #e8a032; --over: #ff8c42;
+  --warn-soft: rgba(255,181,71,0.15);
 }
 
 :root[data-theme="light"] {
@@ -40,12 +40,12 @@
   --bg-0: #f6f5f2;  --bg-1: #ffffff;  --bg-2: #efedea;  --bg-raise: #ffffff;
   --line: rgba(52,54,62,0.13);  --line-strong: rgba(52,54,62,0.22);
   --fg: #1b1d21;    --fg-soft: #3f434a;   --muted: #6d727b;
-  --accent: #3d6cc8;  --accent-soft: rgba(61,108,200,0.11);  --on-accent: #ffffff;
+  --accent: #2563eb;  --accent-soft: rgba(37,99,235,0.11);  --on-accent: #ffffff;
   --shadow: rgba(28,30,36,0.16);
-  --pos: #2f7c48;   --pos-dim: rgba(47,124,72,0.6);   --pos-soft: rgba(47,124,72,0.10);
-  --neg: #b0392f;   --neg-dim: rgba(176,57,47,0.6);   --neg-soft: rgba(176,57,47,0.09);
-  --warn: #96690f;  --warn-dim: #7d5709; --warning: #7d5709; --over: #a35a22;
-  --warn-soft: rgba(150,105,15,0.11);
+  --pos: #15803d;   --pos-dim: rgba(21,128,61,0.6);   --pos-soft: rgba(21,128,61,0.10);
+  --neg: #dc2626;   --neg-dim: rgba(220,38,38,0.6);   --neg-soft: rgba(220,38,38,0.09);
+  --warn: #a16207;  --warn-dim: #854d0e; --warning: #854d0e; --over: #c2410c;
+  --warn-soft: rgba(161,98,7,0.12);
 }
 
 :root {
@@ -118,10 +118,9 @@ a:focus-visible, [tabindex]:focus-visible, summary:focus-visible {
 <script type="text/babel" src="page-categories.jsx"></script>
 <script type="text/babel" src="page-portfolio.jsx"></script>
 <script type="text/babel" src="page-vermoegen.jsx"></script>
-<script type="text/babel" src="page-forecast.jsx"></script>
+<script type="text/babel" src="page-ziele.jsx"></script>
 <script type="text/babel" src="page-jahresuebersicht.jsx"></script>
 <script type="text/babel" src="page-abos.jsx"></script>
-<script type="text/babel" src="page-fire.jsx"></script>
 <script type="text/babel" src="page-steuer.jsx"></script>
 <script type="text/babel" src="page-regeln.jsx"></script>
 <script type="text/babel" src="app.jsx"></script>

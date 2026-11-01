@@ -59,126 +59,116 @@ const BaselineCard = () => {
   );
   if (!data || !data.n_months) return null;
 
-  const maxSpend = Math.max(...data.per_month.map(m => m.total_spend), 1);
+  // Kompakt: drei Zahlen, ein Mini-Diagramm, die größten Posten. Monatsliste
+  // und Kategorie-Auswahl liegen hinter "Details" — vorher füllte die Karte
+  // einen ganzen Bildschirm.
+  const maxTotal = Math.max(...data.per_month.map(m => m.spend + (m.excluded || 0)), 1);
+  const topCats = data.categories.slice(0, 5);
+  const maxCatAvg = Math.max(...topCats.map(c => c.avg), 1);
+  const big = { fontFamily: "var(--mono)", fontSize: 20, fontWeight: 600, letterSpacing: "-0.02em" };
+  const lbl = { fontSize: 10, color: "var(--muted)", textTransform: "uppercase", letterSpacing: "0.08em" };
 
   return (
-    <Card level="primary">
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 12, flexWrap: "wrap", marginBottom: 16 }}>
+    <Card>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12, flexWrap: "wrap", marginBottom: 14 }}>
         <div>
-          <div style={{ fontSize: 11, color: "var(--muted)", textTransform: "uppercase", letterSpacing: "0.08em" }}>
-            Grundlast
-          </div>
-          <div style={{ fontSize: 16, fontWeight: 600, marginTop: 4 }}>Was ein normaler Monat kostet</div>
-          <div style={{ fontSize: 11, color: "var(--muted)", marginTop: 3 }}>
-            Schnitt über {data.n_months} abgeschlossene Monate ({data.months[0]} – {data.months.at(-1)})
-          </div>
+          <span style={{ fontSize: 15, fontWeight: 600 }}>Ein normaler Monat</span>
+          <span style={{ fontSize: 11, color: "var(--muted)", marginLeft: 10 }}>
+            Ø {data.months[0]} – {data.months.at(-1)}
+          </span>
         </div>
-        <Segmented
+        <Segmented size="sm"
           value={String(months)}
           onChange={(v) => setMonths(Number(v))}
           options={[{ value: "3", label: "3 Mon." }, { value: "6", label: "6 Mon." }, { value: "12", label: "12 Mon." }]}
         />
       </div>
 
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 14, marginBottom: 18 }}>
-        <Stat label="Ø Einnahmen" value={fmtEUR(data.avg_income)} sub="pro Monat" />
-        <Stat label="Ø Grundlast" value={fmtEUR(data.avg_spend)} sub="ohne Einmaliges" />
-        <Stat
-          label="Ø möglich zu sparen"
-          value={fmtEUR(data.avg_savings)}
-          large
-          delta={data.avg_income > 0 ? `${Math.round(data.savings_rate * 100)} % der Einnahmen` : null}
-          deltaTone={data.avg_savings >= 0 ? "pos" : "neg"}
-          tone={data.avg_savings >= 0 ? "pos" : "neg"}
-        />
-      </div>
+      <div style={{ display: "grid", gridTemplateColumns: "minmax(260px, 1.1fr) minmax(200px, 1fr) minmax(220px, 1fr)", gap: 24, alignItems: "start" }}>
+        {/* Drei Zahlen */}
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 12 }}>
+          <div><div style={lbl}>Einnahmen</div><div style={{ ...big, marginTop: 4 }}>{fmtEUR(data.avg_income, { decimals: 0 })}</div></div>
+          <div><div style={lbl}>Ausgaben</div><div style={{ ...big, marginTop: 4 }}>{fmtEUR(data.avg_spend, { decimals: 0 })}</div></div>
+          <div>
+            <div style={lbl}>Übrig</div>
+            <div style={{ ...big, marginTop: 4, color: data.avg_savings >= 0 ? "var(--pos)" : "var(--neg)" }}>{fmtEUR(data.avg_savings, { decimals: 0 })}</div>
+            {data.avg_income > 0 && <div style={{ fontSize: 11, color: "var(--muted)", marginTop: 2 }}>{Math.round(data.savings_rate * 100)} % der Einnahmen</div>}
+          </div>
+          <div style={{ gridColumn: "1 / -1", fontSize: 11, color: "var(--muted)", lineHeight: 1.5 }}>
+            {data.excluded_avg > 0
+              ? <>Ohne {fmtEUR(data.excluded_avg, { decimals: 0 })}/Monat Einmaliges — voll gerechnet {fmtEUR(data.avg_spend_incl_all, { decimals: 0 })} Ausgaben.</>
+              : <>Alle Ausgaben eingerechnet.</>}
+            {" "}
+            <button onClick={() => setOpen(o => !o)} style={{ background: "none", border: "none", padding: 0, cursor: "pointer", color: "var(--accent)", fontSize: 11, fontFamily: "inherit" }}>
+              {open ? "weniger" : "Details"}
+            </button>
+          </div>
+        </div>
 
-      {/* Was herausgerechnet wurde, gehört sichtbar dazu. Ein Schnitt, der
-          stillschweigend Posten weglässt, ist eine Zahl, der man später nicht
-          mehr traut. */}
-      <div style={{
-        display: "flex", alignItems: "flex-start", gap: 8, padding: "10px 12px",
-        background: "var(--warn-soft)", border: "1px solid var(--warn-soft)",
-        borderRadius: 10, fontSize: 12, marginBottom: 16,
-      }}>
-        <span style={{ color: "var(--warn)", lineHeight: 1.5 }}>≈</span>
-        <div style={{ lineHeight: 1.55 }}>
-          <strong>{fmtEUR(data.excluded_avg)}</strong> pro Monat sind herausgerechnet
-          {data.sonderausgaben_avg > 0 && <> (davon {fmtEUR(data.sonderausgaben_avg)} Sonderausgaben)</>}.
-          Voll gerechnet wären es <strong>{fmtEUR(data.avg_spend_incl_all)}</strong> Ausgaben pro Monat.
-          <button onClick={() => setOpen(o => !o)} style={{
-            background: "none", border: "none", padding: "0 0 0 6px", cursor: "pointer",
-            color: "var(--accent)", fontSize: 12, fontFamily: "inherit",
-          }}>{open ? "weniger" : "anpassen"}</button>
+        {/* Mini-Diagramm: Ausgaben je Monat, Einmaliges obendrauf */}
+        <div>
+          <div style={{ display: "flex", alignItems: "flex-end", gap: 6, height: 64 }}>
+            {data.per_month.map(m => (
+              <div key={m.month} title={`${m.month}: ${fmtEUR(m.spend, { decimals: 0 })}${m.excluded ? ` + ${fmtEUR(m.excluded, { decimals: 0 })} einmalig` : ""} · übrig ${fmtEUR(m.savings, { decimals: 0 })}`}
+                   style={{ flex: 1, display: "flex", flexDirection: "column", justifyContent: "flex-end", height: "100%" }}>
+                {m.excluded > 0 && <div style={{ height: `${(m.excluded / maxTotal) * 100}%`, background: "var(--warn)", opacity: 0.85, borderRadius: "2px 2px 0 0" }} />}
+                <div style={{ height: `${(m.spend / maxTotal) * 100}%`, background: "var(--accent)", opacity: 0.95, borderRadius: m.excluded > 0 ? 0 : "2px 2px 0 0" }} />
+              </div>
+            ))}
+          </div>
+          <div style={{ display: "flex", gap: 6, marginTop: 4 }}>
+            {data.per_month.map(m => (
+              <span key={m.month} style={{ flex: 1, textAlign: "center", fontSize: 9, color: "var(--muted)", fontFamily: "var(--mono)" }}>{m.month.slice(5)}</span>
+            ))}
+          </div>
+        </div>
+
+        {/* Größte Posten */}
+        <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+          {topCats.map(c => (
+            <div key={c.category}>
+              <div style={{ display: "flex", justifyContent: "space-between", fontSize: 12 }}>
+                <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{c.category}</span>
+                <span style={{ fontFamily: "var(--mono)", flexShrink: 0, marginLeft: 8 }}>{fmtEUR(c.avg, { decimals: 0 })}</span>
+              </div>
+              <div style={{ height: 3, background: "var(--bg-2)", borderRadius: 2, marginTop: 3 }}>
+                <div style={{ width: `${(c.avg / maxCatAvg) * 100}%`, height: "100%", background: "var(--accent)", opacity: 0.9, borderRadius: 2 }} />
+              </div>
+            </div>
+          ))}
         </div>
       </div>
 
       {open && (
-        <div style={{ marginBottom: 16, padding: "12px 14px", background: "var(--bg-2)", borderRadius: 10 }}>
-          <div style={{ fontSize: 11, color: "var(--muted)", marginBottom: 8 }}>
-            Kategorien, die als einmalig gelten und nicht in die Grundlast zählen:
-          </div>
-          <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
-            {(data.all_categories || []).map(c => {
-              const on = (excluded || []).includes(c);
-              return (
-                <button key={c} onClick={() => toggleCat(c)} style={{
-                  padding: "4px 10px", borderRadius: 999, fontSize: 11, cursor: "pointer",
-                  fontFamily: "inherit",
-                  border: `1px solid ${on ? "var(--warn)" : "var(--line)"}`,
-                  background: on ? "var(--warn-soft)" : "transparent",
-                  color: on ? "var(--warn)" : "var(--muted)",
-                }}>{on ? "− " : "+ "}{c}</button>
-              );
-            })}
-          </div>
-        </div>
-      )}
-
-      {/* Monatsbalken: Grundlast massiv, Einmaliges schraffiert obendrauf.
-          So sieht man sofort, ob ein Monat teuer war oder nur einen Ausreisser hatte. */}
-      <div style={{ display: "flex", flexDirection: "column", gap: 7 }}>
-        {data.per_month.map(m => (
-          <div key={m.month} style={{ display: "flex", alignItems: "center", gap: 10 }}>
-            <span style={{ fontSize: 10, color: "var(--muted)", fontFamily: "var(--mono)", width: 52, flexShrink: 0 }}>
-              {m.month.slice(2)}
-            </span>
-            <div style={{ flex: 1, height: 14, background: "var(--bg-2)", borderRadius: 3, overflow: "hidden", display: "flex" }}>
-              <div style={{ width: `${(m.spend / maxSpend) * 100}%`, background: "var(--accent)", opacity: 0.75 }}
-                   title={`Grundlast ${fmtEUR(m.spend)}`} />
-              {m.excluded > 0 && (
-                <div style={{ width: `${(m.excluded / maxSpend) * 100}%`, background: "var(--warn)", opacity: 0.55 }}
-                     title={`einmalig ${fmtEUR(m.excluded)}`} />
-              )}
-            </div>
-            <span style={{ fontSize: 11, fontFamily: "var(--mono)", width: 82, textAlign: "right", flexShrink: 0 }}>
-              {fmtEUR(m.spend, { decimals: 0 })}
-            </span>
-            <span style={{ fontSize: 11, fontFamily: "var(--mono)", width: 82, textAlign: "right", flexShrink: 0,
-                           color: m.savings >= 0 ? "var(--pos)" : "var(--neg)" }}>
-              {fmtEUR(m.savings, { decimals: 0, sign: true })}
-            </span>
-          </div>
-        ))}
-        <div style={{ display: "flex", gap: 14, fontSize: 10, color: "var(--muted)", marginTop: 4, justifyContent: "flex-end" }}>
-          <span><span style={{ display: "inline-block", width: 8, height: 8, borderRadius: 2, background: "var(--accent)", opacity: 0.75, marginRight: 4 }} />Grundlast</span>
-          <span><span style={{ display: "inline-block", width: 8, height: 8, borderRadius: 2, background: "var(--warn)", opacity: 0.55, marginRight: 4 }} />einmalig</span>
-          <span>rechts: übrig geblieben</span>
-        </div>
-      </div>
-
-      {data.categories.length > 0 && (
-        <div style={{ marginTop: 16, paddingTop: 14, borderTop: "1px solid var(--line)" }}>
-          <div style={{ fontSize: 11, color: "var(--muted)", marginBottom: 10 }}>
-            Grundlast nach Kategorie (Ø pro Monat)
-          </div>
-          <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-            {data.categories.slice(0, 6).map(c => (
-              <div key={c.category} style={{ display: "flex", justifyContent: "space-between", fontSize: 12 }}>
-                <span>{c.category}</span>
-                <span style={{ fontFamily: "var(--mono)" }}>{fmtEUR(c.avg)}</span>
+        <div style={{ marginTop: 16, paddingTop: 14, borderTop: "1px solid var(--line)", display: "grid", gridTemplateColumns: "1fr 1fr", gap: 24 }}>
+          <div>
+            <div style={{ fontSize: 11, color: "var(--muted)", marginBottom: 8 }}>Je Monat</div>
+            {data.per_month.map(m => (
+              <div key={m.month} style={{ display: "flex", justifyContent: "space-between", fontSize: 12, fontFamily: "var(--mono)", padding: "3px 0" }}>
+                <span style={{ color: "var(--muted)" }}>{m.month}</span>
+                <span>{fmtEUR(m.spend, { decimals: 0 })}{m.excluded > 0 && <span style={{ color: "var(--warn)" }}> +{fmtEUR(m.excluded, { decimals: 0 })}</span>}</span>
+                <span style={{ color: m.savings >= 0 ? "var(--pos)" : "var(--neg)" }}>{fmtEUR(m.savings, { decimals: 0, sign: true })}</span>
               </div>
             ))}
+          </div>
+          <div>
+            <div style={{ fontSize: 11, color: "var(--muted)", marginBottom: 8 }}>
+              Als einmalig herausrechnen{data.sonderausgaben_avg > 0 && <> (Sonderausgaben ⚑ immer: {fmtEUR(data.sonderausgaben_avg, { decimals: 0 })}/Monat)</>}:
+            </div>
+            <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+              {(data.all_categories || []).map(c => {
+                const on = (excluded || []).includes(c);
+                return (
+                  <button key={c} onClick={() => toggleCat(c)} style={{
+                    padding: "4px 10px", borderRadius: 999, fontSize: 11, cursor: "pointer",
+                    fontFamily: "inherit",
+                    border: `1px solid ${on ? "var(--warn)" : "var(--line)"}`,
+                    background: on ? "var(--warn-soft)" : "transparent",
+                    color: on ? "var(--warn)" : "var(--muted)",
+                  }}>{on ? "− " : "+ "}{c}</button>
+                );
+              })}
+            </div>
           </div>
         </div>
       )}
@@ -220,7 +210,7 @@ const AccountRow = ({ account: a, onRenamed }) => {
   return (
     <div style={{ display: "flex", alignItems: "center", padding: "11px 0", borderBottom: "1px solid var(--line)", gap: 12 }}>
       <div style={{ width: 34, height: 34, borderRadius: 8, background: "var(--bg-2)", display: "flex", alignItems: "center", justifyContent: "center", color: "var(--muted)" }}>
-        <Icon name={a.type === "Trade Republic" ? "portfolio" : "bank"} size={15} />
+        <Icon name={a.type === "Trade Republic" || a.type === "Kraken" ? "portfolio" : "bank"} size={15} />
       </div>
       <div style={{ flex: 1, minWidth: 0 }}>
         {editing ? (
@@ -255,15 +245,13 @@ const AccountRow = ({ account: a, onRenamed }) => {
         )}
         <div style={{ fontSize: 11, color: "var(--muted)", fontFamily: "var(--mono)" }}>
           {a.type}
+          {a.holdings != null && <> · Krypto {fmtEUR(a.holdings, { decimals: 0 })}{Math.abs(a.balance) >= 0.01 ? ` + Cash ${fmtEUR(a.balance, { decimals: 0 })}` : ""}</>}
           {!a.calibrated && <span style={{ color: "var(--warn)" }}> · nur Zahlungsstrom</span>}
-          {a.raw_labels && a.raw_labels.length > 1 && (
-            <span style={{ color: "var(--muted)" }}> · {a.raw_labels.length} Bezeichnungen</span>
-          )}
         </div>
         {err && <div style={{ fontSize: 11, color: "var(--neg)", marginTop: 2 }}>{err}</div>}
       </div>
       <div style={{ fontFamily: "var(--mono)", fontSize: 14, fontWeight: 600, color: a.balance < 0 ? "var(--neg)" : "var(--fg)" }}>
-        {fmtEUR(a.balance)}
+        {fmtEUR(a.balance + (a.holdings || 0))}
       </div>
     </div>
   );
@@ -387,14 +375,14 @@ const PageDashboard = () => {
           <Stat label="Ausgaben" value={fmtEUR(s.total_expenses)} delta={s.total_refunds > 0 ? `${fmtEUR(s.total_refunds)} Erstattungen` : undefined} deltaTone="neutral" sub="Konsum" />
           <div style={{ marginTop: 14, display: "flex", gap: 4, alignItems: "flex-end" }}>
             {(data.monthly_cashflow || []).slice(-5).map((d, i) => (
-              <div key={i} style={{ width: 8, height: Math.max(4, d.out / (Math.max(...(data.monthly_cashflow || []).map(x => x.out)) || 1) * 36), background: "var(--neg)", opacity: 0.5 + i * 0.1, borderRadius: 1 }} />
+              <div key={i} style={{ width: 8, height: Math.max(4, d.out / (Math.max(...(data.monthly_cashflow || []).map(x => x.out)) || 1) * 36), background: "var(--neg)", opacity: 0.6 + i * 0.1, borderRadius: 1 }} />
             ))}
           </div>
         </Card>
         <Card>
-          <Stat label="Investiert" value={fmtEUR(s.total_invested)} delta={s.total_invested > 0 ? fmtPct(s.total_invested / (s.total_income || 1) * 100, { sign: false }) + " des Einkommens" : "Keine Investitionen"} deltaTone="accent" sub="Vermögensaufbau" />
+          <Stat label="Netto investiert" value={fmtEUR(s.total_invested)} delta={s.total_invested > 0 ? fmtPct(s.total_invested / (s.total_income || 1) * 100, { sign: false }) + " des Einkommens" : s.total_invested < 0 ? "mehr verkauft als gekauft" : "Keine Investitionen"} deltaTone="accent" sub="Käufe minus Verkäufe" />
           <div style={{ marginTop: 14, display: "flex", alignItems: "center", gap: 12 }}>
-            <ProgressRing value={(s.total_invested / (s.total_income || 1)) * 100} max={50} color="var(--accent)" label={`${Math.round((s.total_invested / (s.total_income || 1)) * 100)}%`} size={48} />
+            <ProgressRing value={Math.max(0, (s.total_invested / (s.total_income || 1)) * 100)} max={50} color="var(--accent)" label={`${Math.round(Math.max(0, s.total_invested / (s.total_income || 1)) * 100)}%`} size={48} />
             <div style={{ fontSize: 11, color: "var(--muted)", lineHeight: 1.4 }}>
               {fmtEUR(s.savings)} netto<br />gespart
             </div>
@@ -436,15 +424,22 @@ const PageDashboard = () => {
           <div style={{ padding: "14px 12px 16px", display: "flex" }}>
             <BarChart data={cf} height={260} posKey="in" negKey="out" netKey="savings" netLabel="Überschuss" xKey="label" yFmt={(v) => fmtEUR(v, { decimals: 0 })} />
           </div>
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(3,1fr)", borderTop: "1px solid var(--line)" }}>
+          {/* Die Rechnung muss sichtbar aufgehen: vorher standen hier nur
+              Eingegangen und Ausgegangen, "Netto" enthielt aber zusätzlich
+              Erstattungen und Investitionen — niemand konnte es nachrechnen. */}
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(4,1fr)", borderTop: "1px solid var(--line)" }}>
             {[
-              { label: "Eingegangen", val: s.total_income, color: "var(--pos)", sign: true },
-              { label: "Ausgegangen", val: -s.total_expenses, color: "var(--neg)", sign: true },
-              { label: "Netto", val: s.net_cashflow, color: s.net_cashflow >= 0 ? "var(--pos)" : "var(--neg)", sign: true },
+              { label: "Einnahmen", val: s.total_income + s.total_refunds, color: "var(--pos)",
+                sub: s.total_refunds > 0 ? `inkl. ${fmtEUR(s.total_refunds, { decimals: 0 })} Erstattungen` : null },
+              { label: "− Konsum", val: -s.total_expenses, color: "var(--neg)" },
+              { label: "− Netto investiert", val: -s.total_invested, color: "var(--accent)",
+                sub: "Käufe minus Verkäufe" },
+              { label: "= Übrig auf Konten", val: s.net_cashflow, color: s.net_cashflow >= 0 ? "var(--pos)" : "var(--neg)" },
             ].map((x, i) => (
-              <div key={i} style={{ padding: "14px 22px", borderRight: i < 2 ? "1px solid var(--line)" : "none" }}>
+              <div key={i} style={{ padding: "14px 18px", borderRight: i < 3 ? "1px solid var(--line)" : "none" }}>
                 <div style={{ fontSize: 10, color: "var(--muted)", textTransform: "uppercase", letterSpacing: "0.08em" }}>{x.label}</div>
-                <div style={{ fontFamily: "var(--mono)", fontSize: 17, fontWeight: 600, color: x.color, marginTop: 4 }}>{fmtEUR(x.val, { sign: x.sign })}</div>
+                <div style={{ fontFamily: "var(--mono)", fontSize: 16, fontWeight: 600, color: x.color, marginTop: 4 }}>{fmtEUR(x.val, { sign: true, decimals: 0 })}</div>
+                {x.sub && <div style={{ fontSize: 10, color: "var(--muted)", marginTop: 3 }}>{x.sub}</div>}
               </div>
             ))}
           </div>
@@ -524,7 +519,7 @@ const PageDashboard = () => {
                     <div style={{ fontFamily: "var(--mono)", fontSize: 13, fontWeight: 500 }}>{fmtEUR(c.value)}</div>
                   </div>
                   <div style={{ height: 4, background: "var(--bg-2)", borderRadius: 2, overflow: "hidden" }}>
-                    <div style={{ width: `${(c.value / maxCat) * 100}%`, height: "100%", background: c.color || "var(--accent)", opacity: 0.85 }} />
+                    <div style={{ width: `${(c.value / maxCat) * 100}%`, height: "100%", background: c.color || "var(--accent)", opacity: 1 }} />
                   </div>
                 </div>
               ))}
@@ -544,14 +539,49 @@ const PageDashboard = () => {
               <AccountRow key={a.id} account={a} onRenamed={reload} />
             ))}
           </div>
+          {/* Depot dazu, damit unten das Vermögen steht und nicht nur Cash —
+              dieselbe Zahl wie auf "Ziele" und "Vermögen". */}
+          {data.depot && data.depot.value != null && (
+            <div style={{ display: "flex", alignItems: "center", padding: "11px 0", borderBottom: "1px solid var(--line)", gap: 12 }}>
+              <div style={{ width: 34, height: 34, borderRadius: 8, background: "var(--bg-2)", display: "flex", alignItems: "center", justifyContent: "center", color: "var(--muted)" }}>
+                <Icon name="portfolio" size={15} />
+              </div>
+              <div style={{ flex: 1 }}>
+                <div style={{ fontSize: 13, fontWeight: 500 }}>Depot</div>
+                <div style={{ fontSize: 11, color: "var(--muted)", fontFamily: "var(--mono)" }}>
+                  Trade Republic · Depotauszug{data.depot.as_of ? ` vom ${fmtDate(data.depot.as_of)}` : ""}
+                </div>
+              </div>
+              <div style={{ fontFamily: "var(--mono)", fontSize: 14, fontWeight: 600 }}>{fmtEUR(data.depot.value)}</div>
+            </div>
+          )}
+          {(data.contracts || []).filter(k => k.current_value > 0).length > 0 && (() => {
+            const ks = data.contracts.filter(k => k.current_value > 0);
+            const sum = ks.reduce((s, k) => s + k.current_value, 0);
+            const estimated = ks.some(k => k.source === "eingezahlt" && k.kind === "vorsorge");
+            return (
+              <div style={{ display: "flex", alignItems: "center", padding: "11px 0", borderBottom: "1px solid var(--line)", gap: 12 }}>
+                <div style={{ width: 34, height: 34, borderRadius: 8, background: "var(--bg-2)", display: "flex", alignItems: "center", justifyContent: "center", color: "var(--muted)" }}>
+                  <Icon name="file" size={15} />
+                </div>
+                <div style={{ flex: 1 }}>
+                  <div style={{ fontSize: 13, fontWeight: 500 }}>Verträge</div>
+                  <div style={{ fontSize: 11, color: estimated ? "var(--warn)" : "var(--muted)", fontFamily: "var(--mono)" }}>
+                    {ks.map(k => k.name).join(" · ")}{estimated ? " · teils nur Einzahlungen" : ""}
+                  </div>
+                </div>
+                <div style={{ fontFamily: "var(--mono)", fontSize: 14, fontWeight: 600 }}>{fmtEUR(sum)}</div>
+              </div>
+            );
+          })()}
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", paddingTop: 12, marginTop: 4 }}>
-            {/* Der Zusatz "(Cashflow-Basis)" war die Entschuldigung dafür, dass
-                hier kein Kontostand stand. Wo ein Saldo hinterlegt ist, steht
-                jetzt der Saldo — dann darf die Zeile auch "Gesamt" heissen. */}
             <span style={{ fontSize: 11, color: "var(--muted)", textTransform: "uppercase", letterSpacing: "0.08em" }}>
-              {(data.accounts || []).every(a => a.calibrated) ? "Gesamt" : "Gesamt (teils Cashflow-Basis)"}
+              {(data.accounts || []).every(a => a.calibrated) ? "Vermögen gesamt" : "Gesamt (teils Cashflow-Basis)"}
             </span>
-            <span style={{ fontFamily: "var(--mono)", fontSize: 15, fontWeight: 600 }}>{fmtEUR((data.accounts || []).reduce((s, a) => s + a.balance, 0))}</span>
+            <span style={{ fontFamily: "var(--mono)", fontSize: 15, fontWeight: 600 }}>
+              {fmtEUR((data.accounts || []).reduce((s, a) => s + a.balance + (a.holdings || 0), 0) + ((data.depot && data.depot.value) || 0)
+                + (data.contracts || []).reduce((s, k) => s + (k.current_value > 0 ? k.current_value : 0), 0))}
+            </span>
           </div>
         </Card>
 

@@ -7,6 +7,12 @@ const PageTransactions = () => {
   const [filterSonder, setFilterSonder] = React.useState("all");
   const [offset, setOffset] = React.useState(0);
   const [sort, setSort] = React.useState("date_desc");
+  // Neu: Zeitraum (Presets wie auf der Übersicht), Art der Buchung, Betragsspanne
+  const [preset, setPreset] = React.useState("all");
+  const [range, setRange] = React.useState({ date_from: "", date_to: "" });
+  const [kind, setKind] = React.useState("all");
+  const [amountMin, setAmountMin] = React.useState("");
+  const [amountMax, setAmountMax] = React.useState("");
   const [editingId, setEditingId] = React.useState(null);
   const [selected, setSelected] = React.useState([]);
   const [deleting, setDeleting] = React.useState(false);
@@ -21,7 +27,12 @@ const PageTransactions = () => {
 
   const fetchData = React.useCallback(() => {
     setLoading(true);
-    const params = new URLSearchParams({ search, category: filterCat, account: filterAcc, sonderausgabe: filterSonder, sort, limit: PER_PAGE, offset });
+    const params = new URLSearchParams({ search, category: filterCat, account: filterAcc, sonderausgabe: filterSonder, sort, limit: PER_PAGE, offset, kind });
+    const dates = (preset === "custom" ? range : presetToDates(preset)) || {};
+    if (dates.date_from) params.set("date_from", dates.date_from);
+    if (dates.date_to) params.set("date_to", dates.date_to);
+    if (amountMin !== "") params.set("amount_min", String(amountMin).replace(",", "."));
+    if (amountMax !== "") params.set("amount_max", String(amountMax).replace(",", "."));
     fetch(`/api/transactions?${params}`)
       .then(async r => {
         const j = await r.json().catch(() => ({}));
@@ -32,7 +43,7 @@ const PageTransactions = () => {
       // 500er stumm in derselben leeren Tabelle.
       .then(d => { setData(d); setError(""); setLoading(false); })
       .catch(e => { setError(e.message || "Unbekannter Fehler"); setLoading(false); });
-  }, [search, filterCat, filterAcc, filterSonder, sort, offset, reloadTick]);
+  }, [search, filterCat, filterAcc, filterSonder, sort, offset, reloadTick, preset, range, kind, amountMin, amountMax]);
 
   const fetchCats = React.useCallback(() => {
     fetch("/api/categories").then(r => r.json()).then(d => setCatList(d.categories || d)).catch(() => {});
@@ -41,7 +52,15 @@ const PageTransactions = () => {
   React.useEffect(() => { fetchCats(); }, [fetchCats]);
 
   // Bei Filter-/Suchwechsel zurück auf Seite 1 — sonst leere Liste bei kleinem Ergebnis.
-  React.useEffect(() => { setOffset(0); }, [search, filterCat, filterAcc, filterSonder]);
+  React.useEffect(() => { setOffset(0); }, [search, filterCat, filterAcc, filterSonder, preset, range, kind, amountMin, amountMax]);
+
+  const anyFilter = search || filterCat !== "all" || filterAcc !== "all" || filterSonder !== "all"
+    || preset !== "all" || kind !== "all" || amountMin !== "" || amountMax !== "";
+  const resetFilters = () => {
+    setSearch(""); setFilterCat("all"); setFilterAcc("all"); setFilterSonder("all");
+    setPreset("all"); setRange({ date_from: "", date_to: "" }); setKind("all");
+    setAmountMin(""); setAmountMax(""); setSort("date_desc");
+  };
 
   React.useEffect(() => {
     const t = setTimeout(fetchData, 250);
@@ -121,6 +140,7 @@ const PageTransactions = () => {
     if (res.ok) {
       setEditingId(null);
       fetchData();
+      window.dispatchEvent(new Event("kapital:open-changed"));
       toast(`Kategorie → ${category}`);
     }
   };
@@ -145,7 +165,8 @@ const PageTransactions = () => {
     if (!groups[d]) groups[d] = [];
     groups[d].push(t);
   });
-  const sortedDates = Object.keys(groups).sort((a, b) => b.localeCompare(a));
+  const sortedDates = Object.keys(groups).sort((a, b) => sort === "date_asc" ? a.localeCompare(b) : b.localeCompare(a));
+  const sums = data?.sums;
   // Nach Betrag sortiert wird flach gerendert. Die Datumsgruppierung würde die
   // Sortierung sonst wieder aufheben: sie ordnet die Gruppen nach Datum, und
   // innerhalb einer Gruppe stünden zwei grosse Beträge zufällig weit
@@ -155,50 +176,82 @@ const PageTransactions = () => {
   return (
     <div style={{ padding: "24px 32px 48px", display: "flex", flexDirection: "column", gap: 16 }}>
       <WarningStrip warnings={error ? [error] : []} onDismiss={() => setError("")} />
-      {/* Toolbar */}
+      {/* Toolbar — Zeile 1: Suche, Zeile 2: Zeitraum + Konten, Zeile 3: Art, Betrag, Kategorie, Sortierung */}
       <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
-        <div style={{ flex: 1, minWidth: 200, display: "flex", alignItems: "center", gap: 10, padding: "9px 14px", background: "var(--bg-1)", border: "1px solid var(--line)", borderRadius: 10 }}>
+        <div style={{ flex: 1, minWidth: 220, display: "flex", alignItems: "center", gap: 10, padding: "9px 14px", background: "var(--bg-1)", border: "1px solid var(--line)", borderRadius: 10 }}>
           <Icon name="search" size={14} stroke="var(--muted)" />
           <input value={search} onChange={(e) => { setSearch(e.target.value); setOffset(0); }}
             placeholder="Suche nach Empfänger, Beschreibung …"
             style={{ flex: 1, background: "transparent", border: "none", outline: "none", color: "var(--fg)", fontSize: 13, fontFamily: "inherit" }} />
-          <span style={{ fontSize: 11, color: "var(--muted)", fontFamily: "var(--mono)" }}>{total}</span>
+        </div>
+        {anyFilter && <Btn variant="ghost" onClick={resetFilters}>Filter zurücksetzen</Btn>}
+        <Btn variant="secondary" icon="download" onClick={() => window.open("/api/transactions/export")}>CSV</Btn>
+      </div>
+
+      <FilterBar
+        preset={preset} onPreset={(p) => setPreset(p)}
+        account={filterAcc} onAccount={setFilterAcc} accounts={accounts} multiAccount
+        dateFrom={range.date_from} dateTo={range.date_to}
+        onRange={(r) => { setRange(r); setPreset("custom"); }}
+      />
+
+      <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+        <Segmented size="sm" value={kind} onChange={setKind} options={[
+          { value: "all", label: "Alle" },
+          { value: "ausgaben", label: "Ausgaben" },
+          { value: "einnahmen", label: "Einnahmen" },
+          { value: "erstattungen", label: "Erstattungen" },
+          { value: "umbuchungen", label: "Umbuchungen" },
+          { value: "investitionen", label: "Investitionen" },
+        ]} />
+        <div style={{ display: "flex", alignItems: "center", gap: 6, padding: "5px 10px", background: "var(--bg-1)", border: "1px solid var(--line)", borderRadius: 10 }}
+             title="Betrag ohne Vorzeichen — gilt für Aus- und Eingänge">
+          <span style={{ fontSize: 12, color: "var(--muted)" }}>Betrag</span>
+          <input value={amountMin} onChange={e => setAmountMin(e.target.value)} placeholder="von" inputMode="decimal"
+            style={{ width: 64, background: "transparent", border: "none", outline: "none", color: "var(--fg)", fontSize: 12, fontFamily: "var(--mono)", textAlign: "right" }} />
+          <span style={{ fontSize: 12, color: "var(--muted)" }}>–</span>
+          <input value={amountMax} onChange={e => setAmountMax(e.target.value)} placeholder="bis" inputMode="decimal"
+            style={{ width: 64, background: "transparent", border: "none", outline: "none", color: "var(--fg)", fontSize: 12, fontFamily: "var(--mono)", textAlign: "right" }} />
+          <span style={{ fontSize: 12, color: "var(--muted)" }}>€</span>
         </div>
         <select value={filterCat} onChange={(e) => { setFilterCat(e.target.value); setOffset(0); }} style={{
-          padding: "9px 12px", background: "var(--bg-1)", border: "1px solid var(--line)", borderRadius: 10,
-          color: "var(--fg)", fontSize: 13, fontFamily: "inherit", outline: "none",
+          padding: "7px 10px", background: "var(--bg-1)", border: "1px solid var(--line)", borderRadius: 10,
+          color: filterCat === "all" ? "var(--muted)" : "var(--fg)", fontSize: 12, fontFamily: "inherit", outline: "none",
         }}>
           <option value="all">Alle Kategorien</option>
           {categories.map(c => <option key={c} value={c}>{c}</option>)}
         </select>
-        <select value={filterAcc} onChange={(e) => { setFilterAcc(e.target.value); setOffset(0); }} style={{
-          padding: "9px 12px", background: "var(--bg-1)", border: "1px solid var(--line)", borderRadius: 10,
-          color: "var(--fg)", fontSize: 13, fontFamily: "inherit", outline: "none",
-        }}>
-          <option value="all">Alle Konten</option>
-          {accounts.map(a => <option key={a} value={a}>{a}</option>)}
-        </select>
         <select value={filterSonder} onChange={(e) => { setFilterSonder(e.target.value); setOffset(0); }} style={{
-          padding: "9px 12px", background: "var(--bg-1)", border: "1px solid var(--line)", borderRadius: 10,
-          color: filterSonder === "true" ? "var(--warning)" : "var(--fg)", fontSize: 13, fontFamily: "inherit", outline: "none",
+          padding: "7px 10px", background: "var(--bg-1)", border: "1px solid var(--line)", borderRadius: 10,
+          color: filterSonder === "all" ? "var(--muted)" : "var(--warn)", fontSize: 12, fontFamily: "inherit", outline: "none",
         }}>
-          <option value="all">Alle Buchungen</option>
-          <option value="false">Ohne Sonderausgaben</option>
-          <option value="true">Nur Sonderausgaben</option>
+          <option value="all">mit Sonderausgaben</option>
+          <option value="false">ohne Sonderausgaben</option>
+          <option value="true">nur Sonderausgaben ⚑</option>
         </select>
+        <div style={{ flex: 1 }} />
         <select value={sort} onChange={(e) => { setSort(e.target.value); setOffset(0); }} style={{
-          padding: "9px 12px", background: "var(--bg-1)", border: "1px solid var(--line)", borderRadius: 10,
-          color: sort === "date_desc" ? "var(--fg)" : "var(--accent)", fontSize: 13, fontFamily: "inherit", outline: "none",
+          padding: "7px 10px", background: "var(--bg-1)", border: "1px solid var(--line)", borderRadius: 10,
+          color: sort === "date_desc" ? "var(--fg)" : "var(--accent)", fontSize: 12, fontFamily: "inherit", outline: "none",
         }} title="Sortierung">
-          <option value="date_desc">Neueste zuerst</option>
-          <option value="date_asc">Älteste zuerst</option>
-          <option value="amount_abs_desc">Betrag: grösste zuerst</option>
-          <option value="amount_abs_asc">Betrag: kleinste zuerst</option>
+          <option value="date_desc">↓ Neueste zuerst</option>
+          <option value="date_asc">↑ Älteste zuerst</option>
+          <option value="amount_abs_desc">↓ Betrag: grösste zuerst</option>
+          <option value="amount_abs_asc">↑ Betrag: kleinste zuerst</option>
           <option value="amount_asc">Grösste Ausgaben zuerst</option>
           <option value="amount_desc">Grösste Eingänge zuerst</option>
         </select>
-        <Btn variant="secondary" icon="download" onClick={() => window.open("/api/transactions/export")}>CSV</Btn>
       </div>
+
+      {/* Ergebnis in Zahlen — damit ein Filter wie "Erstattungen, letztes Jahr" sofort eine Antwort gibt */}
+      {sums && (
+        <div style={{ display: "flex", gap: 18, flexWrap: "wrap", fontSize: 12, color: "var(--muted)", padding: "0 4px" }}>
+          <span><strong style={{ color: "var(--fg)", fontFamily: "var(--mono)" }}>{fmtNum(sums.count)}</strong> Buchungen</span>
+          {sums.sum_in > 0 && <span>Eingänge <strong style={{ color: "var(--pos)", fontFamily: "var(--mono)" }}>{fmtEUR(sums.sum_in, { sign: true })}</strong></span>}
+          {sums.sum_out < 0 && <span>Ausgänge <strong style={{ color: "var(--neg)", fontFamily: "var(--mono)" }}>{fmtEUR(sums.sum_out)}</strong></span>}
+          {sums.sum_in > 0 && sums.sum_out < 0 && <span>Saldo <strong style={{ color: "var(--fg)", fontFamily: "var(--mono)" }}>{fmtEUR(sums.sum_in + sums.sum_out, { sign: true })}</strong></span>}
+        </div>
+      )}
 
       {/* Bulk bar */}
       {selected.length > 0 && (
@@ -242,7 +295,11 @@ const PageTransactions = () => {
                 <th style={{ textAlign: "left", padding: "11px 14px", fontWeight: 500, width: 190 }}>Kategorie</th>
                 <th style={{ textAlign: "left", padding: "11px 14px", fontWeight: 500, width: 130 }}>Konto</th>
                 <th style={{ textAlign: "center", padding: "11px 10px", fontWeight: 500, width: 40 }} title="Sonderausgabe">S</th>
-                <th style={{ textAlign: "right", padding: "11px 20px", fontWeight: 500, width: 120 }}>Betrag</th>
+                <th style={{ textAlign: "right", padding: "11px 20px", fontWeight: 500, width: 120, cursor: "pointer", userSelect: "none", color: byAmount ? "var(--accent)" : undefined }}
+                    title="Nach Betrag sortieren (klicken wechselt die Richtung)"
+                    onClick={() => setSort(sort === "amount_abs_desc" ? "amount_abs_asc" : sort === "amount_abs_asc" ? "date_desc" : "amount_abs_desc")}>
+                  Betrag {sort === "amount_abs_desc" ? "↓" : sort === "amount_abs_asc" ? "↑" : ""}
+                </th>
               </tr>
             </thead>
             <tbody>
@@ -272,6 +329,12 @@ const PageTransactions = () => {
                         <td style={{ padding: "11px 0" }}>
                           <div style={{ fontWeight: 500 }}>{t.payee || t.description}</div>
                           {t.payee && t.description && <div style={{ fontSize: 11, color: "var(--muted)", marginTop: 1 }}>{t.description}</div>}
+                          {t.booking_date && (
+                            <div style={{ fontSize: 10, color: "var(--warn)", marginTop: 2 }}
+                                 title="Monatszahlung kam verspätet am Monatsanfang — zählt für den Vormonat">
+                              gebucht am {fmtDate(t.booking_date)} · zählt für {new Date(t.date).toLocaleDateString("de-DE", { month: "long", year: "numeric" })}
+                            </div>
+                          )}
                           {t.is_transfer && <Pill tone="neutral" size="sm">Umbuchung</Pill>}
                         </td>
                         <td style={{ padding: "11px 14px", position: "relative" }}>

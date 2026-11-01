@@ -73,7 +73,14 @@ def open_mask(df: pd.DataFrame) -> pd.Series:
     not_transfer = ~df["is_transfer"].astype(bool) & (df["category"] != "Umbuchung")
     is_sonstiges = df["category"].fillna("") == OPEN_CATEGORY
     no_payee = df["payee"].fillna("").str.strip() == ""
-    return not_transfer & (is_sonstiges | no_payee)
+    # Vom User ausdrücklich zugeordnet — auch wenn die Wahl "Sonstiges" war.
+    # Ohne dieses Flag war "Sonstiges" nicht wählbar: die Buchung blieb offen
+    # und tauchte nach jedem Abschluss sofort wieder im Zähler auf.
+    if "reviewed" in df.columns:
+        reviewed = df["reviewed"].replace("", False).fillna(False).astype(bool)
+    else:
+        reviewed = pd.Series(False, index=df.index)
+    return not_transfer & (is_sonstiges | no_payee) & ~reviewed
 
 
 def open_items(df: pd.DataFrame, months: list[str] | None = None) -> pd.DataFrame:
@@ -139,3 +146,76 @@ def suggest_category(df: pd.DataFrame, payee: str, description: str) -> tuple[st
         return "", 0
     counts = hits["category"].value_counts()
     return str(counts.index[0]), int(counts.iloc[0])
+
+
+# ── Aus der eigenen Historie lernen ───────────────────────────────────────────
+#
+# Ohne das kam jeder wiederkehrende Händler (Streaming-Abo, der Bäcker
+# um die Ecke) mit jedem Import wieder als "Sonstiges" in die Zuordnung — der
+# Zähler oben rechts füllte sich nach jedem Abschluss von neuem.
+
+# Leere Empfänger kommen aus Parquet teils als Text "nan"/"none" zurück — das
+# ist kein Händler, unter dem man lernen darf.
+_NO_KEY = {"", "nan", "none"}
+
+# Ab diesem Anteil gilt die häufigste Kategorie eines Händlers als eindeutig.
+LEARN_MIN_SHARE = 0.75
+
+
+def _group_keys(df: pd.DataFrame) -> pd.Series:
+    payee = df["payee"].fillna("").astype(str)
+    desc = df["description"].fillna("").astype(str)
+    return pd.Series(
+        [group_key(p, d) for p, d in zip(payee, desc)], index=df.index, dtype=object,
+    )
+
+
+def learned_categories(df: pd.DataFrame) -> dict[str, str]:
+    """Händler-Schlüssel → Kategorie, die der Bestand eindeutig belegt."""
+    if df.empty:
+        return {}
+    done = df[
+        (df["category"].fillna("") != OPEN_CATEGORY)
+        & (df["category"].fillna("") != "Umbuchung")
+        & (df["category"].fillna("") != "")
+        & (~df["is_transfer"].fillna(False).astype(bool))
+    ]
+    if done.empty:
+        return {}
+    keys = _group_keys(done)
+    tab = pd.DataFrame({"key": keys, "cat": done["category"]})
+    tab = tab[~tab["key"].isin(_NO_KEY)]
+    if tab.empty:
+        return {}
+    counts = tab.groupby(["key", "cat"]).size().rename("n").reset_index()
+    totals = counts.groupby("key")["n"].transform("sum")
+    counts["share"] = counts["n"] / totals
+    best = counts.sort_values("n", ascending=False).drop_duplicates("key")
+    best = best[best["share"] >= LEARN_MIN_SHARE]
+    return dict(zip(best["key"], best["cat"]))
+
+
+def apply_learned(df: pd.DataFrame, scope: pd.Series | None = None) -> tuple[pd.DataFrame, int]:
+    """Offene Buchungen (optional nur innerhalb `scope`) aus der Historie zuordnen.
+
+    Gibt (df, anzahl_zugeordnet) zurück. Rührt nur offene Buchungen an —
+    eine bestehende Zuordnung wird nie überschrieben.
+    """
+    if df.empty:
+        return df, 0
+    target = open_mask(df)
+    if scope is not None:
+        target = target & scope.reindex(df.index, fill_value=False).astype(bool)
+    if not target.any():
+        return df, 0
+    learned = learned_categories(df)
+    if not learned:
+        return df, 0
+    keys = _group_keys(df[target])
+    keys = keys[~keys.isin(_NO_KEY)]
+    cats = keys.map(learned).dropna()
+    if cats.empty:
+        return df, 0
+    df = df.copy()
+    df.loc[cats.index, "category"] = cats.values
+    return df, int(len(cats))

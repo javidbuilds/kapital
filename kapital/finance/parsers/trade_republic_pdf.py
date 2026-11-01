@@ -369,6 +369,13 @@ def parse_depot_snapshot(uploaded_file) -> pd.DataFrame:
     except Exception:
         return pd.DataFrame()
 
+    # Nur ein echter Depotauszug ist ein Snapshot. Ein Kontoauszug enthält
+    # ebenfalls ISINs (in jeder Dividenden- und Handelszeile) — ohne diese
+    # Prüfung wurde er als "Snapshot" mit 20 Positionen ohne Stückzahl
+    # gespeichert und hat den echten Depotstand überschrieben.
+    if _detect_type(text) != 'depot':
+        return pd.DataFrame()
+
     lines    = [l.strip() for l in text.splitlines() if l.strip()]
     holdings = []
     seen_isins: set = set()
@@ -438,7 +445,39 @@ def parse_depot_snapshot(uploaded_file) -> pd.DataFrame:
             "current_value": current_value,
         })
 
-    return pd.DataFrame(holdings) if holdings else pd.DataFrame()
+    # Eine Zeile ohne Stückzahl ist keine Position, sondern eine ISIN, die
+    # irgendwo im Fließtext stand.
+    holdings = [h for h in holdings if h["units"] is not None and h["units"] > 0]
+    if not holdings:
+        return pd.DataFrame()
+    out = pd.DataFrame(holdings)
+    out["as_of"] = _snapshot_date(text)
+    return out
+
+
+def _snapshot_date(text: str) -> str:
+    """Stichtag des Depotauszugs als 'YYYY-MM-DD', '' wenn nicht lesbar.
+
+    "Depotauszug zum 12.04.2026" bzw. Kopfzeile "DATUM 31.10.2026".
+    """
+    head = text[:3000]
+    for rx in (r'\bzum\s+(\d{2}\.\d{2}\.\d{4})', r'DATUM\s+(\d{2}\.\d{2}\.\d{4})'):
+        m = re.search(rx, head, re.IGNORECASE)
+        if m:
+            ts = pd.to_datetime(m.group(1), format="%d.%m.%Y", errors="coerce")
+            if pd.notna(ts):
+                return ts.strftime("%Y-%m-%d")
+    return ""
+
+
+def is_account_statement(uploaded_file) -> bool:
+    """Ist das PDF ein TR-Kontoauszug (Sammelauszug über viele Buchungen)?"""
+    if not _PDF_AVAILABLE:
+        return False
+    try:
+        return _detect_type(_extract_text(uploaded_file)) == 'kontoauszug'
+    except Exception:
+        return False
 
 
 # ── Public entry point ────────────────────────────────────────────────────────

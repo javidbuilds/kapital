@@ -22,7 +22,6 @@ const PageJahresuebersicht = () => {
   if (!data || (!data.years?.length && !data.monthly?.length)) return <EmptyState title="Keine Daten" desc="Importiere zuerst Kontodaten." />;
 
   const { years = [], monthly = [], categories = [], all_accounts = [] } = data;
-  const maxCat = Math.max(...categories.map(c => Math.abs(c.total)), 1);
 
   const rateColor = (r) => r >= 20 ? "var(--pos)" : r >= 10 ? "var(--accent)" : "var(--neg)";
 
@@ -173,26 +172,73 @@ const PageJahresuebersicht = () => {
         )
       )}
 
-      {/* Kategorien */}
+      {/* Kategorien — Jahresvergleich */}
       {view === "kategorien" && (
-        categories.length === 0 ? <EmptyState title="Keine Kategoriedaten" /> : (
-          <Card>
-            <div style={{ fontSize: 15, fontWeight: 600, marginBottom: 16 }}>Ausgaben nach Kategorie (gesamt)</div>
-            <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-              {categories.slice(0, 20).map(c => (
-                <div key={c.category}>
-                  <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 5 }}>
-                    <span style={{ fontSize: 13 }}>{c.category}</span>
-                    <span style={{ fontFamily: "var(--mono)", fontSize: 13, fontWeight: 500 }}>{fmtEUR(Math.abs(c.total))}</span>
-                  </div>
-                  <div style={{ height: 4, background: "var(--bg-2)", borderRadius: 2, overflow: "hidden" }}>
-                    <div style={{ width: `${(Math.abs(c.total) / maxCat) * 100}%`, height: "100%", background: "var(--accent)", opacity: 0.7 }} />
-                  </div>
+        categories.length === 0 ? <EmptyState title="Keine Kategoriedaten" /> : (() => {
+          const meta = data.category_meta || { years: [], months: {} };
+          const yrs = meta.years || [];
+          const cur = yrs[yrs.length - 1];
+          const prev = yrs[yrs.length - 2];
+          const maxAvg = Math.max(...categories.map(c => c.avg_month || 0), 1);
+          const th = { padding: "10px 12px", fontWeight: 500, textAlign: "right", whiteSpace: "nowrap" };
+          const td = { padding: "9px 12px", textAlign: "right", fontFamily: "var(--mono)", fontSize: 12, whiteSpace: "nowrap" };
+          const totals = Object.fromEntries(yrs.map(y => [y, categories.reduce((s, c) => s + (c.years[y] || 0), 0)]));
+          return (
+            <Card padding={0}>
+              <div style={{ padding: "16px 20px 12px", borderBottom: "1px solid var(--line)" }}>
+                <div style={{ fontSize: 15, fontWeight: 600 }}>Wofür geht das Geld — Jahr für Jahr</div>
+                <div style={{ fontSize: 12, color: "var(--muted)", marginTop: 4, lineHeight: 1.5 }}>
+                  Konsumausgaben je Kategorie (ohne Umbuchungen, Investments, Einkommen).
+                  {cur && prev && <> Vergleich {cur} gegen {prev} über den <strong>Ø pro Monat</strong>,
+                  weil {cur} erst {meta.months[cur]} Monate enthält.</>}
                 </div>
-              ))}
-            </div>
-          </Card>
-        )
+              </div>
+              <div style={{ overflowX: "auto" }}>
+                <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
+                  <thead>
+                    <tr style={{ color: "var(--muted)", fontSize: 10, textTransform: "uppercase", letterSpacing: "0.08em", borderBottom: "1px solid var(--line)" }}>
+                      <th style={{ ...th, textAlign: "left", paddingLeft: 20 }}>Kategorie</th>
+                      {yrs.map(y => <th key={y} style={th}>{y}{meta.months[y] < 12 ? ` (${meta.months[y]} M.)` : ""}</th>)}
+                      <th style={th}>Ø/Monat {cur}</th>
+                      <th style={{ ...th, paddingRight: 20 }}>vs. {prev}</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {categories.map(c => {
+                      const ch = c.change_pct;
+                      const chColor = ch == null ? "var(--muted)" : ch > 10 ? "var(--neg)" : ch < -10 ? "var(--pos)" : "var(--muted)";
+                      return (
+                        <tr key={c.category} style={{ borderBottom: "1px solid var(--line)" }}>
+                          <td style={{ padding: "9px 12px 9px 20px" }}>
+                            <div style={{ fontSize: 13 }}>{c.category}</div>
+                            <div style={{ height: 3, background: "var(--bg-2)", borderRadius: 2, marginTop: 5, maxWidth: 160 }}>
+                              <div style={{ width: `${(c.avg_month / maxAvg) * 100}%`, height: "100%", background: "var(--accent)", opacity: 0.9, borderRadius: 2 }} />
+                            </div>
+                          </td>
+                          {yrs.map(y => (
+                            <td key={y} style={{ ...td, color: c.years[y] ? "var(--fg)" : "var(--muted)" }}>
+                              {c.years[y] ? fmtEUR(c.years[y], { decimals: 0 }) : "—"}
+                            </td>
+                          ))}
+                          <td style={{ ...td, fontWeight: 600 }}>{fmtEUR(c.avg_month, { decimals: 0 })}</td>
+                          <td style={{ ...td, paddingRight: 20, color: chColor }}>
+                            {ch != null ? `${ch > 0 ? "+" : ""}${ch.toFixed(0)} %` : c.avg_month > 0 ? "neu" : "—"}
+                          </td>
+                        </tr>
+                      );
+                    })}
+                    <tr style={{ fontWeight: 600 }}>
+                      <td style={{ padding: "10px 12px 10px 20px" }}>Summe</td>
+                      {yrs.map(y => <td key={y} style={td}>{fmtEUR(totals[y], { decimals: 0 })}</td>)}
+                      <td style={td}>{fmtEUR(categories.reduce((s, c) => s + c.avg_month, 0), { decimals: 0 })}</td>
+                      <td style={{ ...td, paddingRight: 20 }} />
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+            </Card>
+          );
+        })()
       )}
     </div>
   );

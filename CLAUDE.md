@@ -2,9 +2,9 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
-## Running the App
-
 > Einrichtung für neue Nutzer: siehe **ANLEITUNG.md**.
+
+## Running the App
 
 Kapital is a FastAPI backend that serves a React (JSX-via-Babel) frontend.
 
@@ -25,6 +25,15 @@ stale PID, sends SIGTERM, escalates to SIGKILL if needed, then starts.
 
 `.jsx` changes need only a browser reload (the cache-buster is per-file mtime);
 `--reload` is for backend changes.
+
+**Dock app (macOS).** `~/Applications/Kapital.app` starts the server in the
+background if it is not running and opens Kapital in a Chrome app window;
+`Kapital beenden.app` stops it. Both only call the scripts in
+`kapital/tools/macos/` (`kapital_open.sh`, `kapital_stop.sh`), so script edits
+apply without reinstalling. Re-create the apps with
+`kapital/tools/macos/install_apps.sh` (e.g. after moving the project). Server
+output goes to `~/Library/Logs/Kapital.log`. After backend changes: quit via
+`Kapital beenden`, then open `Kapital` again.
 
 This starts uvicorn on port `8502` (override with `KAPITAL_PORT`) and opens the
 browser automatically. Backend API is under `/api`, everything else serves the

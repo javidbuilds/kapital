@@ -263,6 +263,29 @@ const PageSteuer = () => {
         </Card>
       </div>
 
+      {/* Krypto: eigene Steuerregel (§ 23 EStG), nicht Teil der Kapitalerträge */}
+      {data.crypto && (
+        <Card>
+          <div style={{ display: "flex", justifyContent: "space-between", gap: 12, flexWrap: "wrap", alignItems: "baseline" }}>
+            <div style={{ fontSize: 15, fontWeight: 600 }}>Krypto {selected_year} (Kraken)</div>
+            <div style={{ fontSize: 11, color: "var(--muted)" }}>private Veräußerungsgeschäfte, § 23 EStG — nicht im Sparerpauschbetrag</div>
+          </div>
+          {data.crypto.n_sales === 0 ? (
+            <div style={{ fontSize: 13, color: "var(--muted)", marginTop: 8, lineHeight: 1.55 }}>
+              Keine Verkäufe in {selected_year} — nichts anzugeben. Wann gehaltene Coins steuerfrei werden, steht unter Portfolio → Krypto.
+            </div>
+          ) : (
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: 14, marginTop: 12 }}>
+              <Stat label="Verkaufserlöse" value={fmtEUR(data.crypto.proceeds)} sub={`${data.crypto.n_sales} Verkäufe`} />
+              <Stat label="Gewinn steuerpflichtig" value={fmtEUR(data.crypto.gain_taxable)}
+                tone={data.crypto.gain_taxable > 0 ? "neg" : undefined}
+                sub={data.crypto.gain_taxable > data.crypto.freigrenze ? "über Freigrenze 1.000 €" : "unter Freigrenze 1.000 €"} />
+              <Stat label="Gewinn steuerfrei" value={fmtEUR(data.crypto.gain_tax_free)} tone="pos" sub="länger als 1 Jahr gehalten" />
+            </div>
+          )}
+        </Card>
+      )}
+
       {/* Monthly chart */}
       {monthly.length > 0 && (
         <Card padding={0}>
