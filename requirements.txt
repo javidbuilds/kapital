@@ -21,9 +21,4 @@ yfinance>=0.2.36
 # KI-Monatsbewertung (Claude API)
 anthropic>=0.116.0
 
-# Kronos forecast model
-torch>=2.0.0
-einops>=0.7.0
-huggingface_hub>=0.20.0
-safetensors>=0.4.0        # loads Kronos model weights (.safetensors)
-tqdm>=4.66.0
+# Keine Kronos-Prognose mehr (kein torch)

@@ -12,7 +12,7 @@ def get_forecast_defaults():
         return {"avg_monthly_savings": 0, "avg_monthly_expenses": 0, "current_wealth": 0}
 
     # Eine Quelle für beide Zahlen. Vorher wurde hier der rohe Zahlungsstrom
-    # summiert — ohne die hinterlegten Anfangssalden, also 14.850 € neben dem,
+    # summiert — ohne die hinterlegten Anfangssalden, also deutlich neben dem,
     # was die Übersicht anzeigte. Und `ersparnis` über 12 Monate enthält den
     # Erstattungsterm und jeden Urlaubsmonat; als Basis einer Hochrechnung über
     # Jahrzehnte taugt das nicht.

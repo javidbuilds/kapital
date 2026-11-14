@@ -6,7 +6,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Running the App
 
-Kapital is a FastAPI backend that serves a React (JSX-via-Babel) frontend.
+Kapital is a FastAPI backend that serves a plain-JavaScript frontend (no framework, no build step).
 
 ```bash
 python -m kapital.run              # from the project root
@@ -23,25 +23,16 @@ keeps running and holds the port, and the next start fails with "address
 already in use". `--restart` exists for exactly that case — it reports the
 stale PID, sends SIGTERM, escalates to SIGKILL if needed, then starts.
 
-`.jsx` changes need only a browser reload (the cache-buster is per-file mtime);
+Frontend changes (`.js`, `.css`) need only a browser reload (the cache-buster is per-file mtime);
 `--reload` is for backend changes.
-
-**Dock app (macOS).** `~/Applications/Kapital.app` starts the server in the
-background if it is not running and opens Kapital in a Chrome app window;
-`Kapital beenden.app` stops it. Both only call the scripts in
-`kapital/tools/macos/` (`kapital_open.sh`, `kapital_stop.sh`), so script edits
-apply without reinstalling. Re-create the apps with
-`kapital/tools/macos/install_apps.sh` (e.g. after moving the project). Server
-output goes to `~/Library/Logs/Kapital.log`. After backend changes: quit via
-`Kapital beenden`, then open `Kapital` again.
 
 This starts uvicorn on port `8502` (override with `KAPITAL_PORT`) and opens the
 browser automatically. Backend API is under `/api`, everything else serves the
 frontend from `kapital/frontend/`.
 
 Dependencies are managed via a `.envrc`-activated virtual environment
-(`direnv` + `.venv`). The `.venv` must contain `yfinance` **and** `torch`
-(needed for the Kronos forecast).
+(`direnv` + `.venv`). The `.venv` must contain `yfinance`. There is no
+Kronos forecast and no `torch` dependency any more.
 
 Tooling is **uv** (fast installer + resolver, alongside direnv):
 
@@ -62,12 +53,11 @@ uv pip sync requirements.lock                          # apply
 direnv auto-activates `.venv` on `cd` into the project (`.envrc` →
 `source .venv/bin/activate`); no manual activation needed.
 
-**Correctness checks.** There is no unit-test suite, but two checks exist and
-should be run after touching money arithmetic or any `.jsx` file:
+**Correctness checks.** There is no unit-test suite, but one check exists and
+should be run after touching money arithmetic:
 
 ```bash
 python -m kapital.check          # 5 invariants over the real data (exit 1 on violation)
-/tmp/jsxcheck/bin/python kapital/tools/jsxcheck.py   # Babel syntax check, all .jsx
 ```
 
 `kapital/check.py` exists because manual browser validation structurally cannot
@@ -79,28 +69,9 @@ holds; positions agree with the depot snapshot; every EUR-rendered price carries
 a currency. Violations that remain are data-quality issues needing a human
 decision, not bugs — the script names the offending rows.
 
-**No Node.js on this machine.** The `.jsx` files are never built, so a syntax or
-render error only shows up in the browser console. To check them without a
-browser, run them through the same Babel the app loads, inside `dukpy`:
-
-```bash
-uv venv /tmp/jsxcheck && VIRTUAL_ENV=/tmp/jsxcheck uv pip install dukpy
-curl -sSL -o /tmp/babel-standalone.js https://unpkg.com/@babel/standalone@7.29.0/babel.min.js
-curl -sSL -o /tmp/react.js https://unpkg.com/react@18.3.1/umd/react.production.min.js
-curl -sSL -o /tmp/react-dom-server-legacy.js \
-  https://unpkg.com/react-dom@18.3.1/umd/react-dom-server-legacy.browser.production.min.js
-```
-
-`Babel.transform(src, {presets:['react']})` catches syntax errors;
-`ReactDOMServer.renderToStaticMarkup` on individual components catches render
-errors. Duktape needs stubs for `TextEncoder`, `Intl` and
-`Date.prototype.toLocaleDateString`, every `evaljs` must end in a serialisable
-value (append `;true;`), and top-level `const` components are reached with
-`eval(name)`, not `window[name]`.
-
 ## Architecture
 
-German-language personal finance analyzer. A **FastAPI + React** app (`kapital/`)
+German-language personal finance analyzer. A **FastAPI + vanilla JS** app (`kapital/`)
 built on a shared, framework-agnostic core package (`finance/`). All data is
 stored locally in `data/` as Parquet files (transactions) and JSON files
 (config/rules). There is no database.
@@ -114,9 +85,8 @@ kapital/                 <- project root
 │   ├── backend/         FastAPI app
 │   │   ├── main.py      app + routers + static frontend serving
 │   │   ├── deps.py      shared data loaders + category metadata
-│   │   ├── routers/     one module per API area
-│   │   └── kronos_model/ Kronos time-series forecast model
-│   └── frontend/        React JSX pages (no build step; Babel in-browser)
+│   │   └── routers/     one module per API area
+│   └── frontend/        index.html, style.css, app.js, pages.js (no build step)
 ├── requirements.txt
 └── .venv/
 ```
@@ -128,20 +98,19 @@ kapital/                 <- project root
 - **`run.py`** — adds the parent dir to `sys.path` so `kapital.backend.main:app`
   is importable, then launches uvicorn.
 - **`backend/main.py`** — creates the FastAPI app, mounts every router under
-  `/api`, and serves `frontend/` static files (with a cache-bust query on `.jsx`).
+  `/api`, and serves `frontend/` static files (with a cache-bust query on `.js`/`.css`).
 - **`backend/deps.py`** — shared data loaders and category (color/icon) metadata.
 - **`backend/routers/`** — one router per domain: `dashboard`, `transactions`,
-  `categories`, `portfolio`, `forecast`, `kronos_forecast`, `upload`,
+  `categories`, `portfolio`, `forecast`, `upload`,
   `jahresuebersicht`, `abos`, `fire`, `steuer`, `regeln`, `settings`,
-  `review`, `monatsabschluss`.
+  `review`, `monatsabschluss`, `ziele`, `contracts`.
 - **`backend/coach.py`** — the only module that talks to a remote API: sends the
   aggregated month snapshot to the Claude API (`claude-opus-5`, structured
   JSON output) and caches the verdict in `data/coach_reviews.json`.
-- **`backend/kronos_model/`** — the Kronos ML model used by the
-  `kronos_forecast` router (loaded lazily; requires `torch`).
-- **`frontend/`** — plain `.jsx` files loaded directly in the browser via Babel;
-  `app.jsx` is the shell, `page-*.jsx` are the tabs, `charts.jsx`/`ui.jsx`/
-  `filters.jsx` are shared components. No bundler.
+- **`frontend/`** — plain JavaScript, no framework, no bundler. `index.html` is
+  the shell and navigation, `style.css` holds the design tokens (`:root`) and
+  layout, `app.js` the core (formatting, API calls, building blocks, hash
+  router), `pages.js` every page.
 
 ### Core package: `kapital/finance/` (shared, no web dependencies)
 
@@ -177,8 +146,8 @@ kapital/                 <- project root
 ### Monthly Close Flow (Import → Zuordnung → Ziele → Bewertung)
 
 1. **Import gate** — `/api/upload` returns `affected_months` (months containing
-   genuinely new rows) and `n_open_affected`. The frontend fires a
-   `kapital:review` window event; `app.jsx` opens `ReviewModal` full-screen.
+   genuinely new rows) and `n_open_affected`. The Import page then lists the
+   open bookings for assignment.
 2. **Forced assignment** — `review.py` lists every open booking of those months
    with a category suggestion drawn from the user's own history (most frequent
    category for the same payee). Assigning a payee auto-applies to every other

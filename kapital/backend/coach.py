@@ -112,6 +112,26 @@ Wertpapiere und keine Prognosen.
 kaum Buchungen), sag das offen, statt zu spekulieren.
 - Maßnahmen sind konkret und im nächsten Monat umsetzbar. Keine Allgemeinplätze \
 wie "weniger ausgeben".
+- Wenn Einnahmen minus Ausgaben nicht den Überschuss ergibt, nenne die \
+Erstattungen, die den Unterschied ausmachen.
+
+Stil (der Text wird gelesen, nicht vorgetragen):
+- Die Headline nennt Zahl und Befund. Keine Charakterisierung des Monats wie \
+"diszipliniert", "solide" oder "durchwachsen", dafür gibt es das Gesamturteil.
+- Keine Kontrastformeln wie "nicht X, sondern Y", "X, nicht Y" oder "kein X, \
+sondern Y". Sag, was ist.
+- Kein Schlusssatz, der den Absatz nur bewertet oder zusammenfasst ("Das ist die \
+wichtigste Zahl des Monats", "Das ist kein Zufall"). Ein Absatz endet mit der \
+letzten Information.
+- Lob und Kritik nur mit Mechanismus und Zahl. Wörter wie "konsequent", "breit \
+aufgestellt", "kostengünstig", "diszipliniert" nur, wenn die Daten sie belegen; \
+Kosten von Fonds stehen nicht in den Daten.
+- Keine Etiketten für Verhalten ("Aktionismus", "Impulskauf"). Beschreib die \
+Handlung und ihre Folge.
+- Keine Sätze über dich selbst oder darüber, was du nicht tust ("Ich bewerte \
+keine Kurse", "Keine Empfehlung zu einzelnen Papieren").
+- Sag jede Einschränkung einmal. Wiederhole sie nicht als Nachsatz.
+- Höchstens ein Gedankenstrich pro Absatz. Lieber zwei kurze Sätze.
 """
 
 USER_TEMPLATE = """\
@@ -143,7 +163,7 @@ RESULT_SCHEMA = {
     "properties": {
         "headline": {
             "type": "string",
-            "description": "Ein Satz, der den Monat auf den Punkt bringt. Max. 90 Zeichen.",
+            "description": "Zahl und wichtigster Befund des Monats, z. B. 'Sparrate 20 %, Freizeit 150 € über Ziel'. Keine Charakterisierung. Max. 90 Zeichen.",
         },
         "gesamturteil": {
             "type": "string",

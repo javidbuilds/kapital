@@ -2,8 +2,8 @@
 
 Vorher gab es zwei Kurspfade: `portfolio.fetch_prices` rechnete korrekt über
 `EUR{WÄHRUNG}=X` um, `kronos_forecast` gar nicht. Das Frontend rendert beide mit
-`fmtEUR`. Ergebnis: ein Applied-Materials-Kurs von 468 USD wurde als „468,00 €"
-angezeigt, während der echte Kurs bei ~390 € lag — kein Spread, sondern eine
+`fmtEUR`. Ergebnis: ein Kurs von 100 USD wurde als „100,00 €"
+angezeigt, obwohl er in Euro deutlich niedriger lag — kein Spread, sondern eine
 fehlende Dimension.
 
 Grundregel hier: **lieber die Fremdwährung ehrlich anzeigen als einen falschen

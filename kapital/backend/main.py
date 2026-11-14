@@ -10,10 +10,10 @@ from fastapi.middleware.cors import CORSMiddleware
 from .routers import (
     dashboard, transactions, categories, portfolio,
     forecast, upload, jahresuebersicht, abos, fire, steuer, regeln,
-    kronos_forecast, settings, review, monatsabschluss, ziele, contracts,
+    settings, review, monatsabschluss, ziele, contracts,
 )
 
-app = FastAPI(title="Kapital", version="1.0")
+app = FastAPI(title="Kapital", version="2.0")
 
 app.add_middleware(
     CORSMiddleware,
@@ -26,7 +26,7 @@ for router in [
     dashboard.router, transactions.router, categories.router,
     portfolio.router, forecast.router, upload.router,
     jahresuebersicht.router, abos.router, fire.router,
-    steuer.router, regeln.router, kronos_forecast.router, settings.router,
+    steuer.router, regeln.router, settings.router,
     review.router, monatsabschluss.router, ziele.router, contracts.router,
 ]:
     app.include_router(router, prefix="/api")
@@ -55,7 +55,7 @@ async def health():
 
 _BUILD_TS = str(int(time.time()))
 
-_JSX_SRC_RE = re.compile(r'src="([^"]+\.jsx)"')
+_JSX_SRC_RE = re.compile(r'(src|href)="([^":]+\.(?:jsx|js|css))"')
 
 
 def _inject_cache_bust(html: str) -> str:
@@ -71,12 +71,12 @@ def _inject_cache_bust(html: str) -> str:
     ändert. Neuladen genügt.
     """
     def sub(m):
-        name = m.group(1)
+        attr, name = m.group(1), m.group(2)
         try:
             ts = int((FRONTEND / name).stat().st_mtime)
         except OSError:
             ts = _BUILD_TS
-        return f'src="{name}?v={ts}"'
+        return f'{attr}="{name}?v={ts}"'
 
     return _JSX_SRC_RE.sub(sub, html)
 

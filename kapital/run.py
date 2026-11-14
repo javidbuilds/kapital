@@ -129,7 +129,7 @@ def main(argv=None) -> int:
         print("geschlossen wurde, statt den Prozess mit Strg+C zu beenden.\n", flush=True)
         print("  python -m kapital.run --restart      alte beenden und neu starten", flush=True)
         print("  python -m kapital.run --stop         nur beenden", flush=True)
-        print(f"  KAPITAL_PORT=8503 python -m kapital.run   auf anderem Port starten\n", flush=True)
+        print(f"  KAPITAL_PORT=8600 python -m kapital.run   auf anderem Port starten\n", flush=True)
         return 1
 
     if not args.no_browser:

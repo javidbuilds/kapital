@@ -1,7 +1,7 @@
 """Vermögen — die eine Quelle für "wie viel habe ich" und "wie viel kann ich sparen".
 
 Vorher beantworteten drei Seiten dieselbe Frage verschieden: die Übersicht mit
-kalibrierten Salden, die Prognose mit dem rohen Zahlungsstrom (14.850 € daneben),
+kalibrierten Salden, die Prognose mit dem rohen Zahlungsstrom (deutlich daneben),
 und FIRE gar nicht — die fragte den Nutzer. Genau wie bei den vier
 Ausgaben-Definitionen gilt: eine Zahl, eine Funktion, alle Seiten fragen dort.
 

@@ -32,8 +32,8 @@ import numpy as np
 WINDOW_DAYS        = 7     # cross-account: max days between legs
 # Erstattungen auf demselben Konto: 90 Tage bei blosser Empfängergleichheit
 # waren viel zu weit. Im Bestand hat das 33 Paare erzeugt, die nichts
-# miteinander zu tun hatten (u. a. −3.000 € und +3.000 € 59 Tage auseinander,
-# beide an den eigenen Namen) und damit 25.837 € aus jeder Auswertung entfernt —
+# miteinander zu tun hatten (etwa zwei gleich hohe Beträge mit umgekehrtem Vorzeichen, Wochen auseinander,
+# beide an den eigenen Namen) und damit einen fünfstelligen Betrag aus jeder Auswertung entfernt —
 # unsichtbar, weil eine entfernte Buchung keine Lücke im Diagramm hinterlässt.
 REFUND_WINDOW_DAYS = 14
 AMOUNT_TOLERANCE   = 0.02  # relative tolerance (2 %)

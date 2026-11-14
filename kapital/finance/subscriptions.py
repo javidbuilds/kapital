@@ -95,7 +95,7 @@ def _evaluate_group(
     # Historie.
     #
     # Der Grund: die Prüfung über alles verwirft genau die Abos, deren Preis
-    # sich geändert hat — Netflix (10,99 → 14,65) kommt auf cv 0,35 und fiel
+    # sich geändert hat — ein Streaming-Abo mit Preiserhöhung kommt leicht auf cv 0,35 und fiel
     # deshalb komplett aus der Erkennung. Ausgerechnet die interessanten Fälle
     # waren damit unsichtbar, und zwar WEIL sie teurer geworden sind.
     #
@@ -106,7 +106,7 @@ def _evaluate_group(
     # Robust gegen einen einzelnen Ausreisser: Median statt Mittelwert, und es
     # genügt, wenn die MEISTEN der letzten Zahlungen auf dem Niveau liegen. Ein
     # einzelner Gutschrift- oder Teilmonat darf ein Abo nicht disqualifizieren
-    # — bei Netflix kippte genau ein Monat (5,98 € statt 18,98 €) die ganze
+    # — ein einzelner Teilmonat (ein Drittel des üblichen Betrags) kippte die ganze
     # Erkennung, obwohl der Preis über Jahre eine klare Leiter bildet.
     recent = grp.sort_values("date")["abs_amount"].tail(_RECENT_WINDOW)
     recent_med = float(recent.median()) if len(recent) else 0.0
@@ -121,7 +121,7 @@ def _evaluate_group(
         return None
     # Obergrenze NUR auf dem aktuellen Fenster, nicht über die ganze Historie.
     # Über Jahre erzeugt jede Preisleiter plus ein anteilig berechneter Monat
-    # ein extremes Verhältnis — bei Netflix 24:1 zwischen 0,79 € und 18,98 €,
+    # ein extremes Verhältnis — leicht 20:1 zwischen Teilbuchung und aktuellem Preis,
     # obwohl es durchgehend dasselbe Abo ist. Falsch gruppierte Zeilen fallen
     # auch im aktuellen Fenster auf; eine acht Jahre alte Teilbuchung nicht.
     if len(recent) and (float(recent.max()) / max(float(recent.min()), 0.01)) > 8:
@@ -133,8 +133,8 @@ def _evaluate_group(
 
     intervals   = [(dates[i + 1] - dates[i]).days for i in range(len(dates) - 1)]
     # Median statt Mittelwert: ein ausgefallener Monat erzeugt eine Lücke von
-    # ~60 Tagen und zieht den Mittelwert zwischen zwei Frequenzklassen. Netflix
-    # kam so auf 37,2 Tage im Schnitt — monatlich, aber nicht mehr als solches
+    # ~60 Tagen und zieht den Mittelwert zwischen zwei Frequenzklassen. Ein Monats-Abo
+    # kam so auf 37 Tage im Schnitt — monatlich, aber nicht mehr als solches
     # erkennbar, nur weil zwei Abbuchungen fehlten. Der Median liegt bei 30.
     avg_int     = float(np.median(intervals))
     # Streuung gegen den Median messen, ebenfalls robust gegen einzelne Lücken.
@@ -202,8 +202,8 @@ def _evaluate_group(
         "frequency":     freq,
         "interval_days": int(round(avg_int)),
         # Jahres- und Monatskosten aus dem AKTUELLEN Preis, nicht aus dem
-        # Schnitt über die ganze Historie. Netflix kam über den Schnitt auf
-        # 13,16 € im Monat, obwohl es aktuell 18,98 € kostet — mit so einer
+        # Schnitt über die ganze Historie. Ein Abo kam über den Schnitt
+        # auf deutlich weniger als den aktuellen Preis — mit so einer
         # Zahl kann man nicht planen, und sie verdeckt genau die Erhöhung, die
         # nebenan ausgewiesen wird.
         "annual_cost":   round(last_amt * annual_factor, 2),
@@ -322,7 +322,7 @@ def find_offsets(df, merchant: str, since_months: int = 18) -> dict:
 
     Ein Abo kann geteilt sein: bei Netflix steckt ein Zusatzmitglied in
     derselben Abbuchung, und dafür kommt regelmässig Geld zurück. Brutto sind
-    das 18,98 €, dein Anteil ist es nicht.
+    ist das der volle Preis, dein Anteil ist es nicht.
 
     Erkennung über den Buchungstext: wer dir für Netflix Geld überweist,
     schreibt üblicherweise "Netflix" dazu. Bewusst konservativ — nur
